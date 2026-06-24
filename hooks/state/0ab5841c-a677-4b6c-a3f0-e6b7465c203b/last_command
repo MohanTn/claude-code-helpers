@@ -1,0 +1,1 @@
+cd /home/mohan/REPO/finance-analyser/backend-dotnet && dotnet test --filter "FullyQualifiedName!~Tax" 2>&1 | tail -5; echo "---"; dotnet test 2>&1 | tail -5

@@ -1,0 +1,221 @@
+=== Db.CategoryRules.cs ===
+     1	using Dapper;
+     2	using FinanceAnalyser.Core.Models;
+     3	using Microsoft.Data.Sqlite;
+     4	
+     5	namespace FinanceAnalyser.Data;
+     6	
+     7	public static partial class Db
+     8	{
+     9	    /// <summary>
+    10	    /// Raw row shape for `category_rules` SELECTs. SQLite INTEGER columns are
+    11	    /// read back as Int64 by Microsoft.Data.Sqlite, which does not match
+    12	    /// `CategoryRule`'s `int?`/`int` constructor parameters closely enough
+    13	    /// for Dapper's constructor-based record materialization — so we query
+    14	    /// into this `long`-typed row first, then map to `CategoryRule`.
+    15	    /// </summary>
+    16	    private record CategoryRuleRow(
+    17	        long Id,
+    18	        long Priority,
+    19	        string MatchField,
+    20	        string MatchType,
+    21	        string? MatchPattern,
+    22	        string TargetCategory)
+    23	    {
+    24	        public CategoryRule ToCategoryRule() =>
+    25	            new((int)Id, (int)Priority, MatchField, MatchType, MatchPattern, TargetCategory);
+    26	    }
+    27	
+    28	    /// <summary>All category rules, ordered by `priority` ASC. Ported from getAllCategoryRules.</summary>
+    29	    public static IReadOnlyList<CategoryRule> GetAllCategoryRules(SqliteConnection connection)
+    30	    {
+    31	        return connection.Query<CategoryRuleRow>(
+    32	            "SELECT id AS Id, priority AS Priority, match_field AS MatchField, match_type AS MatchType, match_pattern AS MatchPattern, target_category AS TargetCategory FROM category_rules ORDER BY priority ASC"
+    33	        ).Select(row => row.ToCategoryRule()).ToList();
+    34	    }
+    35	
+    36	    /// <summary>
+    37	    /// If `category_rules` is empty, bulk-insert <paramref name="rules"/>.
+    38	    /// Idempotent: a non-empty table is left untouched (re-running with a
+    39	    /// different rule set will not conflict with the existing
+    40	    /// UNIQUE(priority) constraint). Ported from seedCategoryRulesIfEmpty.
+    41	    /// </summary>
+    42	    public static void SeedCategoryRulesIfEmpty(SqliteConnection connection, IReadOnlyList<CategoryRule> rules)
+    43	    {
+    44	        var count = connection.QuerySingle<long>("SELECT COUNT(*) FROM category_rules");
+    45	        if (count > 0)
+    46	        {
+    47	            return;
+    48	        }
+    49	
+    50	        using var transaction = connection.BeginTransaction();
+    51	        foreach (var rule in rules)
+    52	        {
+    53	            connection.Execute(
+    54	                """
+    55	                INSERT OR IGNORE INTO category_rules (priority, match_field, match_type, match_pattern, target_category)
+    56	                VALUES (@Priority, @MatchField, @MatchType, @MatchPattern, @TargetCategory)
+    57	                """,
+    58	                new
+    59	                {
+    60	                    rule.Priority,
+    61	                    rule.MatchField,
+    62	                    rule.MatchType,
+    63	                    rule.MatchPattern,
+    64	                    rule.TargetCategory,
+    65	                },
+    66	                transaction);
+    67	        }
+    68	        transaction.Commit();
+    69	    }
+    70	
+    71	    /// <summary>Look up a single category rule by `id`. Backs PATCH/DELETE /api/rules/:id's existence checks.</summary>
+    72	    public static CategoryRule? GetCategoryRuleById(SqliteConnection connection, long id)
+    73	    {
+    74	        return connection.QuerySingleOrDefault<CategoryRuleRow>(
+    75	            "SELECT id AS Id, priority AS Priority, match_field AS MatchField, match_type AS MatchType, match_pattern AS MatchPattern, target_category AS TargetCategory FROM category_rules WHERE id = @Id",
+    76	            new { Id = id })?.ToCategoryRule();
+    77	    }
+    78	
+    79	    /// <summary>
+    80	    /// Inserts a new category rule. Ported from server.ts:640-645 (POST
+    81	    /// /api/rules). Lets a UNIQUE(priority) <see cref="SqliteException"/>
+    82	    /// bubble up to the caller, which maps it to 400.
+    83	    /// </summary>
+    84	    public static CategoryRule InsertCategoryRule(
+    85	        SqliteConnection connection,
+    86	        int priority,
+    87	        string matchField,
+    88	        string matchType,
+    89	        string? matchPattern,
+    90	        string targetCategory)
+    91	    {
+    92	        var id = connection.ExecuteScalar<long>(
+    93	            """
+    94	            INSERT INTO category_rules (priority, match_field, match_type, match_pattern, target_category)
+    95	            VALUES (@Priority, @MatchField, @MatchType, @MatchPattern, @TargetCategory);
+    96	            SELECT last_insert_rowid();
+    97	            """,
+    98	            new
+    99	            {
+   100	                Priority = priority,
+   101	                MatchField = matchField,
+   102	                MatchType = matchType,
+   103	                MatchPattern = matchPattern,
+   104	                TargetCategory = targetCategory,
+   105	            });
+   106	
+   107	        return new CategoryRule((int)id, priority, matchField, matchType, matchPattern, targetCategory);
+   108	    }
+   109	
+   110	    /// <summary>
+   111	    /// Partially updates a category rule: each `null` parameter falls back to
+   112	    /// the existing column value (mirrors server.ts:680-689's `?? existing.*`
+   113	    /// behavior — `priority` falls back via `int?`, the others via plain
+   114	    /// nullable strings since empty-string is a valid match_pattern value but
+   115	    /// "not provided" must still mean "keep existing"). Returns null if `id`
+   116	    /// does not exist. Lets a UNIQUE(priority) <see cref="SqliteException"/>
+   117	    /// bubble up to the caller, which maps it to 400.
+   118	    /// </summary>
+   119	    public static CategoryRule? UpdateCategoryRule(
+   120	        SqliteConnection connection,
+   121	        long id,
+   122	        int? priority,
+   123	        string? matchType,
+   124	        string? matchPattern,
+   125	        string? targetCategory)
+   126	    {
+   127	        var existing = GetCategoryRuleById(connection, id);
+   128	        if (existing is null)
+   129	        {
+   130	            return null;
+   131	        }
+   132	
+   133	        var newPriority = priority ?? existing.Priority;
+   134	        var newMatchType = matchType ?? existing.MatchType;
+   135	        var newMatchPattern = matchPattern ?? existing.MatchPattern;
+   136	        var newTargetCategory = targetCategory ?? existing.TargetCategory;
+   137	
+   138	        connection.Execute(
+   139	            """
+   140	            UPDATE category_rules
+   141	            SET priority = @Priority, match_type = @MatchType, match_pattern = @MatchPattern, target_category = @TargetCategory
+   142	            WHERE id = @Id
+   143	            """,
+   144	            new
+   145	            {
+   146	                Priority = newPriority,
+   147	                MatchType = newMatchType,
+   148	                MatchPattern = newMatchPattern,
+   149	                TargetCategory = newTargetCategory,
+   150	                Id = id,
+   151	            });
+   152	
+   153	        return GetCategoryRuleById(connection, id);
+   154	    }
+   155	
+   156	    /// <summary>Deletes the category rule `id`. Returns true if a row was deleted. Ported from server.ts:702-706.</summary>
+   157	    public static bool DeleteCategoryRule(SqliteConnection connection, long id)
+   158	    {
+   159	        var rowsAffected = connection.Execute(
+   160	            "DELETE FROM category_rules WHERE id = @Id",
+   161	            new { Id = id });
+   162	        return rowsAffected > 0;
+   163	    }
+   164	
+   165	    /// <summary>
+   166	    /// `SELECT MAX(priority) FROM category_rules WHERE priority &lt; 999`,
+   167	    /// as a nullable result (null when no non-default rule exists yet) —
+   168	    /// mirrors server.ts:631-633's `row?.m`, leaving the `?? 400` fallback
+   169	    /// to the caller (matches the exact contract requested for this method).
+   170	    /// </summary>
+   171	    public static long? GetMaxNonDefaultPriority(SqliteConnection connection)
+   172	    {
+   173	        return connection.ExecuteScalar<long?>(
+   174	            "SELECT MAX(priority) FROM category_rules WHERE priority < 999");
+   175	    }
+   176	
+   177	    /// <summary>Whether any category rule currently has the given `priority`. Used to find a free auto-assigned priority (server.ts:636-638).</summary>
+   178	    public static bool CategoryRulePriorityExists(SqliteConnection connection, int priority)
+   179	    {
+   180	        return connection.ExecuteScalar<long>(
+   181	            "SELECT COUNT(*) FROM category_rules WHERE priority = @Priority",
+   182	            new { Priority = priority }) > 0;
+   183	    }
+   184	}
+=== Db.BalanceSnapshots.cs ===
+     1	using Dapper;
+     2	using FinanceAnalyser.Core.Models;
+     3	using Microsoft.Data.Sqlite;
+     4	
+     5	namespace FinanceAnalyser.Data;
+     6	
+     7	public static partial class Db
+     8	{
+     9	    /// <summary>
+    10	    /// Inserts or replaces the balance snapshot for <paramref name="accountId"/>
+    11	    /// on <paramref name="snapshot"/>.Date (keyed on UNIQUE(account_id, date)).
+    12	    /// Ported from upsertBalanceSnapshot. Note the TS implementation
+    13	    /// hardcodes currency to 'EUR' in the INSERT statement (it does not take
+    14	    /// a currency parameter) — preserved verbatim here.
+    15	    /// </summary>
+    16	    public static void UpsertBalanceSnapshot(
+    17	        SqliteConnection connection,
+    18	        long accountId,
+    19	        BalanceSnapshot snapshot,
+    20	        string sourcePdf)
+    21	    {
+    22	        connection.Execute(
+    23	            """
+    24	            INSERT OR REPLACE INTO balance_snapshots (account_id, date, balance_cents, currency, source_pdf)
+    25	            VALUES (@AccountId, @Date, @BalanceCents, 'EUR', @SourcePdf)
+    26	            """,
+    27	            new
+    28	            {
+    29	                AccountId = accountId,
+    30	                snapshot.Date,
+    31	                snapshot.BalanceCents,
+    32	                SourcePdf = sourcePdf,
+    33	            });
+    34	    }
+    35	}

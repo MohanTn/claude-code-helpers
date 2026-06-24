@@ -1,0 +1,1 @@
+` and a `GOAL_CHECK:` before stopping. I saved a memory noting this so future sessions in other projects don't mistake it for a bug.

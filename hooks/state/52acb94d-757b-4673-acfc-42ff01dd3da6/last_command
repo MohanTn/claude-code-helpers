@@ -1,0 +1,1 @@
+cat /home/mohan/.claude/hooks/lib/common.sh 2>/dev/null; echo "---CONFIG---"; ls /home/mohan/.claude/hooks/config 2>/dev/null; echo "---"; ls /home/mohan/.claude/hooks/lib 2>/dev/null

@@ -1,0 +1,411 @@
+   670	    }
+   671	    if (match_type && !MATCH_TYPES.includes(match_type)) {
+   672	      return res.status(400).json({ error: `Invalid match_type: ${match_type}` });
+   673	    }
+   674	
+   675	    const existing = db.prepare('SELECT * FROM category_rules WHERE id = ?').get(ruleId) as any;
+   676	    if (!existing) return res.status(404).json({ error: 'not found' });
+   677	
+   678	    try {
+   679	      db.prepare(
+   680	        `UPDATE category_rules
+   681	         SET priority = ?, match_type = ?, match_pattern = ?, target_category = ?
+   682	         WHERE id = ?`
+   683	      ).run(
+   684	        priority         ?? existing.priority,
+   685	        match_type       ?? existing.match_type,
+   686	        match_pattern    ?? existing.match_pattern,
+   687	        target_category  ?? existing.target_category,
+   688	        ruleId
+   689	      );
+   690	      return res.json(db.prepare('SELECT * FROM category_rules WHERE id = ?').get(ruleId));
+   691	    } catch (error) {
+   692	      if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) {
+   693	        return res.status(400).json({ error: 'priority already used by another rule' });
+   694	      }
+   695	      throw error;
+   696	    }
+   697	  });
+   698	
+   699	  // ===== DELETE /api/rules/:id =====
+   700	  app.delete('/api/rules/:id', (req: Request, res: Response) => {
+   701	    const ruleId = parseInt(req.params.id, 10);
+   702	    const result = db.prepare('DELETE FROM category_rules WHERE id = ?').run(ruleId);
+   703	    if (result.changes === 0) return res.status(404).json({ error: 'not found' });
+   704	    return res.json({ id: ruleId, deleted: true });
+   705	  });
+   706	
+   707	  // ===== POST /api/rules/run =====
+   708	  // Re-runs all rules against every non-manually-overridden transaction.
+   709	  // Returns { updated: N } — count of transactions whose category changed.
+   710	  app.post('/api/rules/run', (_req: Request, res: Response) => {
+   711	    const rules = dbGetAllCategoryRules(db);
+   712	    const updated = recategorizeAll(db, rules);
+   713	    return res.json({ updated });
+   714	  });
+   715	
+   716	  // ─────────────────────────────────────────
+   717	  // PROPERTY & MORTGAGE ENDPOINTS
+   718	  // ─────────────────────────────────────────
+   719	
+   720	  const RECURRING_COST_TYPES = ['rental_income', 'mortgage_payment', 'maintenance', 'property_tax'];
+   721	  const COST_TYPES = [...ACQUISITION_COST_TYPES, ...RECURRING_COST_TYPES, ...DOCUMENTATION_COST_TYPES];
+   722	
+   723	  function enrichProperty(p: any): any {
+   724	    const mortgage = db
+   725	      .prepare('SELECT * FROM mortgages WHERE property_id = ? ORDER BY id DESC LIMIT 1')
+   726	      .get(p.id) as any;
+   727	
+   728	    const costLinks = db.prepare(`
+   729	      SELECT pcl.cost_type, pcl.transaction_id, t.date, t.description, t.amount_cents, t.account_id
+   730	      FROM property_cost_links pcl
+   731	      JOIN transactions t ON t.id = pcl.transaction_id
+   732	      WHERE pcl.property_id = ?
+   733	    `).all(p.id) as any[];
+   734	
+   735	    const total_acquisition_cost_cents = propertyTotalCost(p, db);
+   736	
+   737	    // Sum linked own_capital transactions (money put in from own pocket)
+   738	    const ownCapitalLinks = costLinks.filter((l: any) => l.cost_type === 'own_capital');
+   739	    const own_capital_cents = ownCapitalLinks.reduce((s: number, l: any) => s + Math.abs(l.amount_cents), 0);
+   740	
+   741	    // Sum linked tenant_deposit transactions (Mietkaution received — a
+   742	    // liability to be returned, not rental income; documentation only).
+   743	    const tenantDepositLinks = costLinks.filter((l: any) => l.cost_type === 'tenant_deposit');
+   744	    const tenant_deposit_cents = tenantDepositLinks.reduce((s: number, l: any) => s + Math.abs(l.amount_cents), 0);
+   745	
+   746	    // Compute mortgage amortization from linked EMI transactions
+   747	    const emiLinks = costLinks.filter((l: any) => l.cost_type === 'mortgage_payment');
+   748	    const amortization = computeMortgageAmortization(mortgage, emiLinks);
+   749	
+   750	    // Enrich cost_links with amortization split for EMI payments
+   751	    const amortMap = new Map<number, { interest_cents: number; principal_cents: number }>();
+   752	    for (const a of amortization.amortizedTransactions) {
+   753	      amortMap.set(a.transaction_id, { interest_cents: a.interest_cents, principal_cents: a.principal_cents });
+   754	    }
+   755	
+   756	    const enrichedCostLinks = costLinks.map((l: any) => {
+   757	      const am = amortMap.get(l.transaction_id);
+   758	      return am ? { ...l, interest_cents: am.interest_cents, principal_cents: am.principal_cents } : l;
+   759	    });
+   760	
+   761	    const outstanding_balance_cents = mortgage?.outstanding_balance_cents ?? 0;
+   762	    const effective_outstanding_balance_cents = outstanding_balance_cents - amortization.total_principal_paid_cents;
+   763	
+   764	    // Equity = estimated_value - total_acquisition_cost + principal paid (equity built through EMI)
+   765	    const current_equity_cents = p.estimated_value_cents
+   766	      ? p.estimated_value_cents - total_acquisition_cost_cents + amortization.total_principal_paid_cents
+   767	      : null;
+   768	    const ltv =
+   769	      p.estimated_value_cents && p.estimated_value_cents > 0
+   770	        ? effective_outstanding_balance_cents / p.estimated_value_cents
+   771	        : total_acquisition_cost_cents > 0
+   772	          ? effective_outstanding_balance_cents / total_acquisition_cost_cents
+   773	          : null;
+   774	
+   775	    return {
+   776	      ...p,
+   777	      total_acquisition_cost_cents,
+   778	      mortgage: mortgage ?? null,
+   779	      own_capital_cents,
+   780	      tenant_deposit_cents,
+   781	      current_equity_cents,
+   782	      ltv_ratio: ltv,
+   783	      cost_links: enrichedCostLinks,
+   784	      total_principal_paid_cents: amortization.total_principal_paid_cents,
+   785	      total_interest_paid_cents: amortization.total_interest_paid_cents,
+   786	      effective_outstanding_balance_cents,
+   787	    };
+   788	  }
+   789	
+   790	  // GET /api/properties
+   791	  app.get('/api/properties', (_req: Request, res: Response) => {
+   792	    const rows = db.prepare('SELECT * FROM properties ORDER BY id').all() as any[];
+   793	    return res.json({ properties: rows.map(enrichProperty) });
+   794	  });
+   795	
+   796	  // POST /api/properties
+   797	  app.post('/api/properties', (req: Request, res: Response) => {
+   798	    const {
+   799	      name, address,
+   800	      purchase_price_cents, purchase_date,
+   801	      grunderwerbsteuer_cents = 0,
+   802	      notarkosten_cents = 0,
+   803	      maklergebuehr_cents = 0,
+   804	      grundbuchkosten_cents = 0,
+   805	      estimated_value_cents,
+   806	      estimated_value_date,
+   807	      building_completion_year,
+   808	      land_value_cents = 0,
+   809	    } = req.body;
+   810	
+   811	    if (!name || !purchase_price_cents || !purchase_date) {
+   812	      return res.status(400).json({ error: 'Missing required fields: name, purchase_price_cents, purchase_date' });
+   813	    }
+   814	
+   815	    const result = db.prepare(`
+   816	      INSERT INTO properties
+   817	        (name, address, purchase_price_cents, purchase_date,
+   818	         grunderwerbsteuer_cents, notarkosten_cents, maklergebuehr_cents, grundbuchkosten_cents,
+   819	         estimated_value_cents, estimated_value_date,
+   820	         building_completion_year, land_value_cents)
+   821	      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+   822	    `).run(
+   823	      name, address ?? null,
+   824	      purchase_price_cents, purchase_date,
+   825	      grunderwerbsteuer_cents, notarkosten_cents, maklergebuehr_cents, grundbuchkosten_cents,
+   826	      estimated_value_cents ?? null, estimated_value_date ?? null,
+   827	      building_completion_year ?? null, land_value_cents,
+   828	    );
+   829	
+   830	    const created = db.prepare('SELECT * FROM properties WHERE id = ?').get(result.lastInsertRowid) as any;
+   831	    return res.status(201).json(enrichProperty(created));
+   832	  });
+   833	
+   834	  // PATCH /api/properties/:id
+   835	  app.patch('/api/properties/:id', (req: Request, res: Response) => {
+   836	    const propId = parseInt(req.params.id, 10);
+   837	    const existing = db.prepare('SELECT * FROM properties WHERE id = ?').get(propId) as any;
+   838	    if (!existing) return res.status(404).json({ error: 'not found' });
+   839	
+   840	    const {
+   841	      name, address,
+   842	      purchase_price_cents, purchase_date,
+   843	      grunderwerbsteuer_cents, notarkosten_cents, maklergebuehr_cents, grundbuchkosten_cents,
+   844	      estimated_value_cents, estimated_value_date,
+   845	      building_completion_year, land_value_cents,
+   846	    } = req.body;
+   847	
+   848	    db.prepare(`
+   849	      UPDATE properties SET
+   850	        name = ?,
+   851	        address = ?,
+   852	        purchase_price_cents = ?,
+   853	        purchase_date = ?,
+   854	        grunderwerbsteuer_cents = ?,
+   855	        notarkosten_cents = ?,
+   856	        maklergebuehr_cents = ?,
+   857	        grundbuchkosten_cents = ?,
+   858	        estimated_value_cents = ?,
+   859	        estimated_value_date = ?,
+   860	        building_completion_year = ?,
+   861	        land_value_cents = ?
+   862	      WHERE id = ?
+   863	    `).run(
+   864	      name                    ?? existing.name,
+   865	      address                 ?? existing.address,
+   866	      purchase_price_cents    ?? existing.purchase_price_cents,
+   867	      purchase_date           ?? existing.purchase_date,
+   868	      grunderwerbsteuer_cents ?? existing.grunderwerbsteuer_cents,
+   869	      notarkosten_cents       ?? existing.notarkosten_cents,
+   870	      maklergebuehr_cents     ?? existing.maklergebuehr_cents,
+   871	      grundbuchkosten_cents   ?? existing.grundbuchkosten_cents,
+   872	      estimated_value_cents   ?? existing.estimated_value_cents,
+   873	      estimated_value_date    ?? existing.estimated_value_date,
+   874	      building_completion_year ?? existing.building_completion_year,
+   875	      land_value_cents        ?? existing.land_value_cents,
+   876	      propId,
+   877	    );
+   878	
+   879	    const updated = db.prepare('SELECT * FROM properties WHERE id = ?').get(propId) as any;
+   880	    return res.json(enrichProperty(updated));
+   881	  });
+   882	
+   883	  // GET /api/properties/:id/summary
+   884	  app.get('/api/properties/:id/summary', (req: Request, res: Response) => {
+   885	    const propId = parseInt(req.params.id, 10);
+   886	    const prop = db.prepare('SELECT * FROM properties WHERE id = ?').get(propId) as any;
+   887	    if (!prop) return res.status(404).json({ error: 'not found' });
+   888	
+   889	    // Monthly cash flow for the last 13 months
+   890	    const months: any[] = [];
+   891	    const now = new Date();
+   892	    for (let i = 12; i >= 0; i--) {
+   893	      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+   894	      const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+   895	
+   896	      // Sum property_transactions for this month
+   897	      const rows = db.prepare(`
+   898	        SELECT type, SUM(amount_cents) as total
+   899	        FROM property_transactions
+   900	        WHERE property_id = ? AND strftime('%Y-%m', date) = ?
+   901	        GROUP BY type
+   902	      `).all(propId, monthStr) as any[];
+   903	
+   904	      const byType: Record<string, number> = {};
+   905	      for (const r of rows) byType[r.type] = r.total;
+   906	
+   907	      // Sum linked bank transactions for this month (recurring types: rental_income, mortgage_payment, maintenance)
+   908	      const linkedRows = db.prepare(`
+   909	        SELECT pcl.cost_type, SUM(t.amount_cents) as total
+   910	        FROM property_cost_links pcl
+   911	        JOIN transactions t ON t.id = pcl.transaction_id
+   912	        WHERE pcl.property_id = ? AND pcl.cost_type IN ('rental_income','mortgage_payment','maintenance','property_tax')
+   913	          AND strftime('%Y-%m', t.date) = ?
+   914	        GROUP BY pcl.cost_type
+   915	      `).all(propId, monthStr) as any[];
+   916	
+   917	      for (const lr of linkedRows) {
+   918	        byType[lr.cost_type] = (byType[lr.cost_type] ?? 0) + lr.total;
+   919	      }
+   920	
+   921	      const rental_income = byType['rental_income'] ?? 0;
+   922	      const mortgage_payment = byType['mortgage_payment'] ?? 0;
+   923	      const property_tax = byType['property_tax'] ?? 0;
+   924	      const expenses = Object.entries(byType)
+   925	        .filter(([t]) => t !== 'rental_income')
+   926	        .reduce((s, [, v]) => s + v, 0);
+   927	      const net_cash_flow = rental_income + expenses; // expenses are negative
+   928	
+   929	      months.push({ month: monthStr, rental_income, mortgage_payment, property_tax, expenses, net_cash_flow });
+   930	    }
+   931	
+   932	    return res.json({ ...enrichProperty(prop), monthly_cash_flow: months });
+   933	  });
+   934	
+   935	  // GET /api/properties/:id/transactions
+   936	  app.get('/api/properties/:id/transactions', (req: Request, res: Response) => {
+   937	    const propId = parseInt(req.params.id, 10);
+   938	    const { month } = req.query;
+   939	
+   940	    let where = 'property_id = ?';
+   941	    const params: any[] = [propId];
+   942	    if (month) {
+   943	      where += " AND strftime('%Y-%m', date) = ?";
+   944	      params.push(String(month));
+   945	    }
+   946	
+   947	    const rows = db.prepare(`
+   948	      SELECT * FROM property_transactions WHERE ${where} ORDER BY date DESC
+   949	    `).all(...params);
+   950	
+   951	    return res.json({ transactions: rows });
+   952	  });
+   953	
+   954	  // POST /api/properties/:id/transactions
+   955	  app.post('/api/properties/:id/transactions', (req: Request, res: Response) => {
+   956	    const propId = parseInt(req.params.id, 10);
+   957	    const prop = db.prepare('SELECT id FROM properties WHERE id = ?').get(propId);
+   958	    if (!prop) return res.status(404).json({ error: 'not found' });
+   959	
+   960	    const { date, type, amount_cents, description } = req.body;
+   961	    const VALID_TYPES = [
+   962	      'rental_income', 'mortgage_payment', 'maintenance', 'insurance', 'property_tax', 'other',
+   963	      'acquisition_purchase', 'acquisition_notary', 'acquisition_transfer_tax',
+   964	      'acquisition_agent_fee', 'acquisition_registry',
+   965	    ];
+   966	
+   967	    if (!date || !type || amount_cents === undefined) {
+   968	      return res.status(400).json({ error: 'Missing required fields: date, type, amount_cents' });
+   969	    }
+   970	    if (!VALID_TYPES.includes(type)) {
+   971	      return res.status(400).json({ error: `Invalid type. Must be one of: ${VALID_TYPES.join(', ')}` });
+   972	    }
+   973	
+   974	    const result = db.prepare(`
+   975	      INSERT INTO property_transactions (property_id, date, type, amount_cents, description)
+   976	      VALUES (?,?,?,?,?)
+   977	    `).run(propId, date, type, amount_cents, description ?? null);
+   978	
+   979	    const created = db.prepare('SELECT * FROM property_transactions WHERE id = ?').get(result.lastInsertRowid);
+   980	    return res.status(201).json(created);
+   981	  });
+   982	
+   983	  // DELETE /api/properties/:id/transactions/:txId
+   984	  app.delete('/api/properties/:id/transactions/:txId', (req: Request, res: Response) => {
+   985	    const propId = parseInt(req.params.id, 10);
+   986	    const txId = parseInt(req.params.txId, 10);
+   987	
+   988	    const result = db.prepare(
+   989	      'DELETE FROM property_transactions WHERE id = ? AND property_id = ?'
+   990	    ).run(txId, propId);
+   991	
+   992	    if (result.changes === 0) return res.status(404).json({ error: 'not found' });
+   993	    return res.json({ id: txId, deleted: true });
+   994	  });
+   995	
+   996	  // ── Property Cost Links (link Kaufnebenkosten to bank transactions) ──
+   997	
+   998	  // POST /api/properties/:id/cost-links
+   999	  app.post('/api/properties/:id/cost-links', (req: Request, res: Response) => {
+  1000	    try {
+  1001	      const propId = parseInt(req.params.id, 10);
+  1002	      const { cost_type, transaction_id } = req.body;
+  1003	
+  1004	      if (!cost_type || transaction_id === undefined) {
+  1005	        return res.status(400).json({ error: 'Missing cost_type or transaction_id' });
+  1006	      }
+  1007	
+  1008	      const prop = db.prepare('SELECT id FROM properties WHERE id = ?').get(propId);
+  1009	      if (!prop) return res.status(404).json({ error: 'Property not found' });
+  1010	
+  1011	      if (!COST_TYPES.includes(cost_type)) {
+  1012	        return res.status(400).json({ error: `Invalid cost_type. Must be one of: ${COST_TYPES.join(', ')}` });
+  1013	      }
+  1014	
+  1015	      const txn = db.prepare('SELECT id FROM transactions WHERE id = ?').get(transaction_id);
+  1016	      if (!txn) return res.status(404).json({ error: 'Transaction not found' });
+  1017	
+  1018	      // Check if link already exists
+  1019	      const existing = db.prepare(`
+  1020	        SELECT pcl.*, t.date, t.description, t.amount_cents, t.account_id
+  1021	        FROM property_cost_links pcl
+  1022	        JOIN transactions t ON t.id = pcl.transaction_id
+  1023	        WHERE pcl.property_id = ? AND pcl.cost_type = ? AND pcl.transaction_id = ?
+  1024	      `).get(propId, cost_type, transaction_id) as any;
+  1025	
+  1026	      if (existing) {
+  1027	        return res.status(200).json(existing);
+  1028	      }
+  1029	
+  1030	      // Insert new link
+  1031	      db.prepare(`
+  1032	        INSERT INTO property_cost_links (property_id, cost_type, transaction_id)
+  1033	        VALUES (?, ?, ?)
+  1034	      `).run(propId, cost_type, transaction_id);
+  1035	
+  1036	      const link = db.prepare(`
+  1037	        SELECT pcl.*, t.date, t.description, t.amount_cents, t.account_id
+  1038	        FROM property_cost_links pcl
+  1039	        JOIN transactions t ON t.id = pcl.transaction_id
+  1040	        WHERE pcl.property_id = ? AND pcl.cost_type = ? AND pcl.transaction_id = ?
+  1041	      `).get(propId, cost_type, transaction_id) as any;
+  1042	
+  1043	      return res.status(201).json(link);
+  1044	    } catch (error) {
+  1045	      return res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  1046	    }
+  1047	  });
+  1048	
+  1049	  // DELETE /api/properties/:id/cost-links/:costType
+  1050	  app.delete('/api/properties/:id/cost-links/:costType', (req: Request, res: Response) => {
+  1051	    const propId = parseInt(req.params.id, 10);
+  1052	    const { costType } = req.params;
+  1053	    const transactionId = req.query.transaction_id ? parseInt(String(req.query.transaction_id), 10) : undefined;
+  1054	
+  1055	    if (!COST_TYPES.includes(costType)) {
+  1056	      return res.status(400).json({ error: `Invalid cost_type: ${costType}` });
+  1057	    }
+  1058	
+  1059	    let result;
+  1060	    if (transactionId) {
+  1061	      result = db.prepare(
+  1062	        'DELETE FROM property_cost_links WHERE property_id = ? AND cost_type = ? AND transaction_id = ?'
+  1063	      ).run(propId, costType, transactionId);
+  1064	    } else {
+  1065	      result = db.prepare(
+  1066	        'DELETE FROM property_cost_links WHERE property_id = ? AND cost_type = ?'
+  1067	      ).run(propId, costType);
+  1068	    }
+  1069	
+  1070	    if (result.changes === 0) return res.status(404).json({ error: 'not found' });
+  1071	    return res.json({ property_id: propId, cost_type: costType, transaction_id: transactionId, deleted: true });
+  1072	  });
+  1073	
+  1074	  // POST /api/mortgages
+  1075	  app.post('/api/mortgages', (req: Request, res: Response) => {
+  1076	    const {
+  1077	      property_id, bank_name,
+  1078	      loan_amount_cents, start_date,
+  1079	      interest_rate, monthly_payment_cents,
+  1080	      outstanding_balance_cents, balance_as_of,

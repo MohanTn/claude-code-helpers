@@ -1,0 +1,15 @@
+H=~/.claude/hooks
+echo "=== regression: turn 2 mentions GOAL: mid-sentence only (not line-start), turn 1's goal already consumed (expect NO capture) ==="
+echo '{"transcript_path":"/tmp/regression-transcript.jsonl","session_id":"regr-test"}' | bash "$H/pre-tool-use-goal-capture.sh"; echo "exit:$?"
+cat "$H/state/regr-test/goal.txt" 2>/dev/null || echo "(no goal.txt — correct)"
+rm -rf "$H/state/regr-test"
+
+echo
+echo "=== regression: turn 2 has a real line-start GOAL: statement (expect capture of turn-2 goal, NOT turn-1's) ==="
+cat >> /tmp/regression-transcript.jsonl <<'EOF'
+{"type":"assistant","message":{"content":[{"type":"text","text":"GOAL: explain the hooks clearly"}]}}
+EOF
+echo '{"transcript_path":"/tmp/regression-transcript.jsonl","session_id":"regr-test2"}' | bash "$H/pre-tool-use-goal-capture.sh"; echo "exit:$?"
+cat "$H/state/regr-test2/goal.txt" 2>/dev/null
+rm -rf "$H/state/regr-test2"
+rm -f /tmp/regression-transcript.jsonl

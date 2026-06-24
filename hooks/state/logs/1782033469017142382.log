@@ -1,0 +1,250 @@
+// Phase 4: Express API server with all 9 endpoints from PRD 8.8.
+// Extended with property tracking, investment portfolio, and Yahoo Finance endpoints.
+//
+// Factory function `createApp(db)` returns Express app for testing.
+// `startServer()` opens the real DB, creates the app, and listens on PORT.
+
+import express, { Express, Request, Response } from 'express';
+import multer from 'multer';
+import type Database from 'better-sqlite3';
+import path from 'node:path';
+import os from 'node:os';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { getDb, getAllAccounts, getAllCategoryRules } from '../db/index.js';
+import {
+  getAccountByName,
+  insertTransaction,
+  updateTransactionCategory,
+  getAllCategoryRules as dbGetAllCategoryRules,
+} from '../db/index.js';
+import {
+  parseCommerzbank,
+  parseCommerzbankCsv,
+  parseWise,
+  parseWiseCsv,
+  parseTradeRepublic,
+  parseTfBank,
+  type ParseResult,
+} from '../parsers/index.js';
+import { importStatement, computeSourceHash, recategorizeAll } from '../import/pipeline.js';
+import { categorizeAll, matchInternalTransfers, SEED_RULES, type CategoryRule, type AccountTaggedTransaction } from '../rules/index.js';
+import { parseTradeRepublicDepotCsv, parseTradeRepublicDepotCsvContent } from '../parsers/traderepublic-depot.js';
+import { ACQUISITION_COST_TYPES, propertyTotalCost, computeMortgageAmortization } from '../property/amortization.js';
+import { calculatePropertiesAnnualResult } from '../property/annual-result.js';
+import { importPayslipFile } from '../import/payslip-pipeline.js';
+import { calculateTax } from '../tax/calculation.js';
+import {
+  LIVING_CATEGORIES_SQL,
+  ENJOY_CATEGORIES_SQL,
+  computeSaving,
+  computeIncomeBreakdown,
+  type CategoryAgg,
+} from '../summary/buckets.js';
+
+const CANONICAL_CATEGORIES = [
+  'Income',
+  'Rent/Housing',
+  'Utilities',
+  'Groceries',
+  'Dining',
+  'Transport',
+  'Fitness/Health',
+  'Insurance',
+  'Subscriptions',
+  'Shopping',
+  'Travel',
+  'Investments',
+  'Internal Transfer',
+  'Fees/Taxes',
+  'Other',
+];
+
+const MATCH_TYPES = ['regex', 'contains', 'default'];
+
+/**
+ * Creates and configures the Express app for a given database.
+ * This factory allows tests to inject a test DB.
+ */
+export function createApp(db: Database.Database): Express {
+  const app = express();
+
+  // Middleware
+  app.use(express.json());
+
+  // Documentation-only property cost types: linking a transaction here records
+  // it against a property but must never feed P&L/cash-flow (own_capital, the
+  // purchase down payment) or income (tenant_deposit, a Mietkaution liability
+  // to be returned, not rent earned). Excluded from the main dashboard's
+  // income/expense aggregations below, the same way 'Internal Transfer' is.
+  const DOCUMENTATION_COST_TYPES = ['own_capital', 'tenant_deposit'];
+  const DOCUMENTATION_LINK_EXCLUSION_SQL = `
+    id NOT IN (
+      SELECT transaction_id FROM property_cost_links
+      WHERE cost_type IN ('${DOCUMENTATION_COST_TYPES.join("','")}')
+    )
+  `;
+
+  // ===== POST /api/import =====
+  app.post('/api/import', (req: Request, res: Response) => {
+    try {
+      const { account_id, pdf_path } = req.body;
+
+      if (!account_id || !pdf_path) {
+        return res.status(400).json({ error: 'Missing account_id or pdf_path' });
+      }
+
+      // Look up account by id
+      const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(account_id) as any;
+      if (!account) {
+        return res.status(400).json({ error: 'Account not found' });
+      }
+
+      // Determine parser based on institution
+      let parseResult: ParseResult;
+      try {
+        if (account.institution === 'Commerzbank') {
+          parseResult = pdf_path.toLowerCase().endsWith('.csv')
+            ? parseCommerzbankCsv(pdf_path)
+            : parseCommerzbank(pdf_path);
+        } else if (account.institution === 'Wise') {
+          parseResult = pdf_path.toLowerCase().endsWith('.csv')
+            ? parseWiseCsv(pdf_path)
+            : parseWise(pdf_path);
+        } else if (account.institution === 'Trade Republic') {
+          parseResult = parseTradeRepublic(pdf_path);
+        } else if (account.institution === 'TF Bank') {
+          parseTfBank(pdf_path);
+          parseResult = parseTfBank(pdf_path);
+        } else {
+          return res.status(400).json({ error: `Unknown institution: ${account.institution}` });
+        }
+      } catch (error) {
+        return res.status(200).json({
+          imported: 0,
+          duplicates: 0,
+          errors: [error instanceof Error ? error.message : String(error)],
+        });
+      }
+
+      // Get rules for categorization
+      const rules = dbGetAllCategoryRules(db);
+
+      // Import using the pipeline
+      const summary = importStatement(db, account.name, pdf_path, parseResult, rules);
+
+      return res.status(200).json({
+        imported: summary.imported,
+        duplicates: summary.duplicates,
+        errors: [],
+      });
+    } catch (error) {
+      return res.status(200).json({
+        imported: 0,
+        duplicates: 0,
+        errors: [error instanceof Error ? error.message : String(error)],
+      });
+    }
+  });
+
+  // ===== POST /api/import/upload =====
+  // Accepts a multipart/form-data file upload.  Fields:
+  //   file        — the PDF or CSV statement file
+  //   account_id  — numeric ID of the account to import into
+  //
+  // The file is saved to a OS temp dir, parsed with the appropriate parser,
+  // imported (dedup via source_hash), then the temp file is deleted.
+  // Returns { imported, duplicates, errors[] }.
+  const upload = multer({ dest: os.tmpdir() });
+
+  app.post('/api/import/upload', upload.single('file'), (req: Request, res: Response) => {
+    const tmpPath = req.file?.path;
+    try {
+      const accountId = parseInt(String(req.body.account_id ?? ''), 10);
+      if (!accountId || !req.file) {
+        if (tmpPath) fs.unlinkSync(tmpPath);
+        return res.status(400).json({ error: 'Missing account_id or file' });
+      }
+
+      const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(accountId) as any;
+      if (!account) {
+        if (tmpPath) fs.unlinkSync(tmpPath);
+        return res.status(400).json({ error: 'Account not found' });
+      }
+
+      // Give the temp file a meaningful extension so parsers that sniff it work
+      const origName = req.file.originalname ?? 'upload.pdf';
+      const ext = path.extname(origName).toLowerCase() || '.pdf';
+      const namedPath = tmpPath! + ext;
+      fs.renameSync(tmpPath!, namedPath);
+
+      let parseResult: ParseResult;
+      try {
+        if (account.institution === 'Commerzbank') {
+          parseResult = ext === '.csv'
+            ? parseCommerzbankCsv(namedPath)
+            : parseCommerzbank(namedPath);
+        } else if (account.institution === 'Wise') {
+          parseResult = ext === '.csv'
+            ? parseWiseCsv(namedPath)
+            : parseWise(namedPath);
+        } else if (account.institution === 'Trade Republic') {
+          parseResult = parseTradeRepublic(namedPath);
+        } else if (account.institution === 'TF Bank') {
+          parseResult = parseTfBank(namedPath);
+        } else {
+          fs.unlinkSync(namedPath);
+          return res.status(400).json({ error: `No parser for institution: ${account.institution}` });
+        }
+      } catch (parseErr) {
+        try { fs.unlinkSync(namedPath); } catch {}
+        return res.status(200).json({
+          imported: 0, duplicates: 0,
+          errors: [parseErr instanceof Error ? parseErr.message : String(parseErr)],
+        });
+      }
+
+      // Normalise source_pdf to the original filename so the UNIQUE(source_pdf, source_hash)
+      // constraint deduplicates correctly against statements imported via the CLI.
+      const canonicalName = path.basename(origName);
+      parseResult.transactions.forEach(tx => { tx.source_pdf = canonicalName; });
+
+      const rules = dbGetAllCategoryRules(db);
+      const summary = importStatement(db, account.name, canonicalName, parseResult, rules);
+      try { fs.unlinkSync(namedPath); } catch {}
+
+      // Re-run cross-account internal transfer matching after each upload
+      const tagged = db.prepare(`
+        SELECT id, account_id, date, description, amount_cents, currency, category, raw_text, source_pdf
+        FROM transactions WHERE is_manual_override = 0
+      `).all() as Array<AccountTaggedTransaction & { id: number }>;
+      const matched = matchInternalTransfers(tagged);
+      let crossMatches = 0;
+      for (let i = 0; i < tagged.length; i++) {
+        if (tagged[i].category !== 'Internal Transfer' && matched[i].category === 'Internal Transfer') {
+          updateTransactionCategory(db, (tagged[i] as any).id, 'Internal Transfer');
+          crossMatches++;
+        }
+      }
+
+      return res.json({ imported: summary.imported, duplicates: summary.duplicates, crossMatches, errors: [] });
+    } catch (err) {
+      try { if (tmpPath) fs.unlinkSync(tmpPath); } catch {}
+      return res.status(500).json({
+        imported: 0, duplicates: 0,
+        errors: [err instanceof Error ? err.message : String(err)],
+      });
+    }
+  });
+
+  // ===== GET /api/accounts =====
+  app.get('/api/accounts', (req: Request, res: Response) => {
+    const accounts = db.prepare('SELECT * FROM accounts ORDER BY id').all() as any[];
+    return res.json({ accounts });
+  });
+
+  // ===== GET /api/transactions =====
+  app.get('/api/transactions', (req: Request, res: Response) => {
+    const { account_id, category, start_date, end_date, limit = '100', offset = '0', search } = req.query;
+
+    const limitNum = parseInt(String(limit), 10) || 100;

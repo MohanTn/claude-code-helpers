@@ -1,0 +1,277 @@
+  app.get('/api/tax/filers', (_req: Request, res: Response) => {
+    const rows = db.prepare('SELECT * FROM tax_filers ORDER BY id').all();
+    return res.json({ filers: rows });
+  });
+
+  // POST /api/tax/filers
+  app.post('/api/tax/filers', (req: Request, res: Response) => {
+    const { name, role, tax_id, employer_name } = req.body;
+    if (!name || !role) {
+      return res.status(400).json({ error: 'Missing required fields: name, role' });
+    }
+    if (!['employee', 'freelancer'].includes(role)) {
+      return res.status(400).json({ error: "role must be 'employee' or 'freelancer'" });
+    }
+
+    try {
+      const result = db.prepare(`
+        INSERT INTO tax_filers (name, role, tax_id, employer_name)
+        VALUES (?, ?, ?, ?)
+      `).run(name, role, tax_id ?? null, employer_name ?? null);
+
+      const created = db.prepare('SELECT * FROM tax_filers WHERE id = ?').get(result.lastInsertRowid);
+      return res.status(201).json(created);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
+        return res.status(400).json({ error: 'A filer with that name already exists' });
+      }
+      throw err;
+    }
+  });
+
+  // PATCH /api/tax/filers/:id
+  app.patch('/api/tax/filers/:id', (req: Request, res: Response) => {
+    const filerId = parseInt(req.params.id, 10);
+    const existing = db.prepare('SELECT * FROM tax_filers WHERE id = ?').get(filerId) as any;
+    if (!existing) return res.status(404).json({ error: 'not found' });
+
+    const { name, role, tax_id, employer_name } = req.body;
+    if (role && !['employee', 'freelancer'].includes(role)) {
+      return res.status(400).json({ error: "role must be 'employee' or 'freelancer'" });
+    }
+
+    try {
+      db.prepare(`
+        UPDATE tax_filers SET name = ?, role = ?, tax_id = ?, employer_name = ?
+        WHERE id = ?
+      `).run(
+        name ?? existing.name,
+        role ?? existing.role,
+        tax_id ?? existing.tax_id,
+        employer_name ?? existing.employer_name,
+        filerId,
+      );
+      const updated = db.prepare('SELECT * FROM tax_filers WHERE id = ?').get(filerId);
+      return res.json(updated);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
+        return res.status(400).json({ error: 'A filer with that name already exists' });
+      }
+      throw err;
+    }
+  });
+
+  // ─────────────────────────────────────────
+  // PAYSLIP ENDPOINTS
+  // ─────────────────────────────────────────
+
+  // GET /api/tax/payslips?filer_id=&year=
+  app.get('/api/tax/payslips', (req: Request, res: Response) => {
+    const { filer_id, year } = req.query;
+
+    let where = '1=1';
+    const params: any[] = [];
+    if (filer_id) { where += ' AND filer_id = ?'; params.push(parseInt(String(filer_id), 10)); }
+    if (year) { where += ' AND year = ?'; params.push(parseInt(String(year), 10)); }
+
+    const rows = db.prepare(`
+      SELECT * FROM payslips WHERE ${where} ORDER BY year, month
+    `).all(...params);
+
+    return res.json({ payslips: rows });
+  });
+
+  // POST /api/tax/payslips/upload — multipart payslip PDF upload
+  // Reuses the same multer instance as /api/import/upload.
+
+  app.post('/api/tax/payslips/upload', upload.single('file'), (req: Request, res: Response) => {
+    const tmpPath = req.file?.path;
+    try {
+      const filerId = parseInt(String(req.body.filer_id ?? ''), 10);
+      if (!filerId || !req.file) {
+        if (tmpPath) fs.unlinkSync(tmpPath);
+        return res.status(400).json({ error: 'Missing filer_id or file' });
+      }
+
+      const filer = db.prepare('SELECT id FROM tax_filers WHERE id = ?').get(filerId);
+      if (!filer) {
+        if (tmpPath) fs.unlinkSync(tmpPath);
+        return res.status(404).json({ error: 'Tax filer not found' });
+      }
+
+      const origName = req.file.originalname ?? 'upload.pdf';
+      const ext = path.extname(origName).toLowerCase() || '.pdf';
+      const namedPath = tmpPath! + ext;
+      fs.renameSync(tmpPath!, namedPath);
+
+      try {
+        const summary = importPayslipFile(db, filerId, namedPath);
+        try { fs.unlinkSync(namedPath); } catch {}
+        return res.json({
+          imported: summary.imported,
+          updated: summary.updated,
+          skipped: summary.skipped,
+          errors: summary.errors,
+        });
+      } catch (parseErr) {
+        try { fs.unlinkSync(namedPath); } catch {}
+        return res.json({
+          imported: 0, updated: 0, skipped: [],
+          errors: [parseErr instanceof Error ? parseErr.message : String(parseErr)],
+        });
+      }
+    } catch (err) {
+      try { if (tmpPath) fs.unlinkSync(tmpPath); } catch {}
+      return res.status(500).json({
+        imported: 0, updated: 0, skipped: [],
+        errors: [err instanceof Error ? err.message : String(err)],
+      });
+    }
+  });
+
+  // DELETE /api/tax/payslips/:id
+  app.delete('/api/tax/payslips/:id', (req: Request, res: Response) => {
+    const id = parseInt(req.params.id, 10);
+    const result = db.prepare('DELETE FROM payslips WHERE id = ?').run(id);
+    if (result.changes === 0) return res.status(404).json({ error: 'not found' });
+    return res.json({ id, deleted: true });
+  });
+
+  // ─────────────────────────────────────────
+  // FREELANCE INCOME ENDPOINTS
+  // ─────────────────────────────────────────
+
+  // GET /api/tax/freelance-income?filer_id=&year=
+  app.get('/api/tax/freelance-income', (req: Request, res: Response) => {
+    const { filer_id, year } = req.query;
+    if (!filer_id || !year) {
+      return res.status(400).json({ error: 'Missing filer_id or year' });
+    }
+
+    const row = db.prepare(
+      'SELECT * FROM freelance_income WHERE filer_id = ? AND year = ?'
+    ).get(parseInt(String(filer_id), 10), parseInt(String(year), 10));
+
+    return res.json({ income: row ?? null });
+  });
+
+  // POST /api/tax/freelance-income
+  app.post('/api/tax/freelance-income', (req: Request, res: Response) => {
+    const { filer_id, year, revenue_cents, business_expenses_cents, advance_tax_paid_cents, health_insurance_cents, pension_insurance_cents, notes } = req.body;
+    if (!filer_id || !year) {
+      return res.status(400).json({ error: 'Missing filer_id or year' });
+    }
+
+    try {
+      const result = db.prepare(`
+        INSERT INTO freelance_income
+          (filer_id, year, revenue_cents, business_expenses_cents,
+           advance_tax_paid_cents, health_insurance_cents, pension_insurance_cents, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        filer_id, year,
+        revenue_cents ?? 0, business_expenses_cents ?? 0,
+        advance_tax_paid_cents ?? 0, health_insurance_cents ?? 0,
+        pension_insurance_cents ?? 0, notes ?? null,
+      );
+
+      const created = db.prepare('SELECT * FROM freelance_income WHERE id = ?').get(result.lastInsertRowid);
+      return res.status(201).json(created);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
+        return res.status(400).json({ error: 'Freelance income already exists for this filer/year' });
+      }
+      throw err;
+    }
+  });
+
+  // PATCH /api/tax/freelance-income/:id
+  app.patch('/api/tax/freelance-income/:id', (req: Request, res: Response) => {
+    const id = parseInt(req.params.id, 10);
+    const existing = db.prepare('SELECT * FROM freelance_income WHERE id = ?').get(id) as any;
+    if (!existing) return res.status(404).json({ error: 'not found' });
+
+    const { revenue_cents, business_expenses_cents, advance_tax_paid_cents, health_insurance_cents, pension_insurance_cents, notes } = req.body;
+
+    db.prepare(`
+      UPDATE freelance_income SET
+        revenue_cents = ?, business_expenses_cents = ?,
+        advance_tax_paid_cents = ?, health_insurance_cents = ?, pension_insurance_cents = ?,
+        notes = ?
+      WHERE id = ?
+    `).run(
+      revenue_cents ?? existing.revenue_cents,
+      business_expenses_cents ?? existing.business_expenses_cents,
+      advance_tax_paid_cents ?? existing.advance_tax_paid_cents,
+      health_insurance_cents ?? existing.health_insurance_cents,
+      pension_insurance_cents ?? existing.pension_insurance_cents,
+      notes ?? existing.notes,
+      id,
+    );
+
+    const updated = db.prepare('SELECT * FROM freelance_income WHERE id = ?').get(id);
+    return res.json(updated);
+  });
+
+  // DELETE /api/tax/freelance-income/:id
+  app.delete('/api/tax/freelance-income/:id', (req: Request, res: Response) => {
+    const id = parseInt(req.params.id, 10);
+    const result = db.prepare('DELETE FROM freelance_income WHERE id = ?').run(id);
+    if (result.changes === 0) return res.status(404).json({ error: 'not found' });
+    return res.json({ id, deleted: true });
+  });
+
+  // ─────────────────────────────────────────
+  // TAX FILING SETTINGS ENDPOINTS
+  // ─────────────────────────────────────────
+
+  // GET /api/tax/settings?year=
+  app.get('/api/tax/settings', (req: Request, res: Response) => {
+    const year = parseInt(String(req.query.year ?? new Date().getFullYear()), 10);
+    const row = db.prepare('SELECT * FROM tax_filing_settings WHERE year = ?').get(year);
+    return res.json({ settings: row ?? { year, filing_status: 'joint' } });
+  });
+
+  // PUT /api/tax/settings
+  app.put('/api/tax/settings', (req: Request, res: Response) => {
+    const { year, filing_status, bundesland, church_tax_member_filer_ids } = req.body;
+    if (!year) return res.status(400).json({ error: 'Missing year' });
+
+    db.prepare(`
+      INSERT INTO tax_filing_settings (year, filing_status, bundesland, church_tax_member_filer_ids)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(year) DO UPDATE SET
+        filing_status = excluded.filing_status,
+        bundesland = excluded.bundesland,
+        church_tax_member_filer_ids = excluded.church_tax_member_filer_ids
+    `).run(
+      year,
+      filing_status ?? 'joint',
+      bundesland ?? null,
+      church_tax_member_filer_ids ?? null,
+    );
+
+    const updated = db.prepare('SELECT * FROM tax_filing_settings WHERE year = ?').get(year);
+    return res.json({ settings: updated });
+  });
+
+  // ─────────────────────────────────────────
+  // TAX CALCULATION ENDPOINT
+  // ─────────────────────────────────────────
+
+  // GET /api/tax/calculation?year=
+  app.get('/api/tax/calculation', (req: Request, res: Response) => {
+    const year = parseInt(String(req.query.year ?? new Date().getFullYear()), 10);
+    try {
+      const result = calculateTax(db, year);
+      return res.json(result);
+    } catch (err) {
+      return res.status(500).json({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  // ─────────────────────────────────────────
+  // PROPERTY ANNUAL RESULT ENDPOINT
+  // ─────────────────────────────────────────

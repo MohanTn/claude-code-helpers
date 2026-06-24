@@ -1,0 +1,230 @@
+// Tests for the payslip import pipeline (parse -> correction-precedence
+// upsert into `payslips`). Mirrors `pipeline.test.ts`'s temp-DB setup.
+
+import { test } from 'node:test';
+import * as assert from 'node:assert';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import Database from 'better-sqlite3';
+import { importPayslipFile, importPayslipsFromDirectory } from './payslip-pipeline.js';
+
+const SCHEMA_PATH = path.resolve(import.meta.dirname, '../db/schema.sql');
+const DOCS_PAYSLIP_DIR = path.resolve(import.meta.dirname, '../../docs/payslip');
+
+/** Creates a fresh temp-file SQLite DB (schema applied, 1 tax filer seeded). */
+function createTempDb(): { db: Database.Database; dir: string; filerId: number } {
+  const dir = mkdtempSync(path.join(tmpdir(), 'finance-payslip-test-'));
+  const file = path.join(dir, 'finance.db');
+  const db = new Database(file);
+  db.exec(readFileSync(SCHEMA_PATH, 'utf-8'));
+
+  const result = db
+    .prepare(`INSERT INTO tax_filers (name, role) VALUES (?, ?)`)
+    .run('Test Filer', 'employee');
+
+  return { db, dir, filerId: result.lastInsertRowid as number };
+}
+
+function getPayslipRow(db: Database.Database, filerId: number, year: number, month: number): any {
+  return db
+    .prepare(`SELECT * FROM payslips WHERE filer_id = ? AND year = ? AND month = ?`)
+    .get(filerId, year, month);
+}
+
+test('importPayslipFile: a handful of real DATEV + Infoniqa files import with correct totals and precedence', () => {
+  const { db, dir, filerId } = createTempDb();
+
+  try {
+    // Single-block DATEV file (March 2024).
+    const r1 = importPayslipFile(
+      db,
+      filerId,
+      path.join(DOCS_PAYSLIP_DIR, '2024/Brutto-Netto-Abrechnung 2024 03 März.pdf')
+    );
+    assert.strictEqual(r1.imported, 1);
+    assert.strictEqual(r1.updated, 0);
+    assert.strictEqual(r1.errors.length, 0);
+
+    // 4-block DATEV file (April 2024): 1 current month + 3 correction blocks
+    // for Jan/Feb/Mar 2024. March 2024 here is a correction for a month that
+    // already has a non-correction row (inserted above) -> must be skipped,
+    // not applied, per precedence rule 1.
+    const r2 = importPayslipFile(
+      db,
+      filerId,
+      path.join(DOCS_PAYSLIP_DIR, '2024/Brutto-Netto-Abrechnung 2024 04 April.pdf')
+    );
+    assert.strictEqual(r2.imported, 3, 'April, Feb, Jan 2024 are new rows');
+    assert.strictEqual(r2.updated, 0);
+    assert.strictEqual(r2.skipped.length, 1, 'March 2024 correction should be skipped (non-correction already won)');
+    assert.match(r2.skipped[0], /discarded in favor of existing higher-precedence row/);
+
+    const marchRow = getPayslipRow(db, filerId, 2024, 3);
+    assert.strictEqual(marchRow.is_correction, 0, 'March 2024 row must remain the original non-correction row');
+
+    // Infoniqa single-block file (April 2025).
+    const r3 = importPayslipFile(
+      db,
+      filerId,
+      path.join(DOCS_PAYSLIP_DIR, '2025/Payslip-2025-04-2025-04-25-311527.pdf')
+    );
+    assert.strictEqual(r3.imported, 1);
+    assert.strictEqual(r3.updated, 0);
+
+    // Infoniqa 3-block file (March 2026): Jan/Feb 2026 corrections + March
+    // 2026 non-correction, all brand new months -> all 3 imported.
+    const r4 = importPayslipFile(
+      db,
+      filerId,
+      path.join(DOCS_PAYSLIP_DIR, '2026/Payslip-2026-03-2026-03-26-366408.pdf')
+    );
+    assert.strictEqual(r4.imported, 3);
+    assert.strictEqual(r4.updated, 0);
+
+    const total = db.prepare('SELECT COUNT(*) as count FROM payslips').get() as { count: number };
+    // March24 + (April24, Feb24, Jan24) + April25 + (Jan26, Feb26, Mar26) = 1 + 3 + 1 + 3 = 8
+    assert.strictEqual(total.count, 8);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('"(2)"-suffixed duplicate Oktober 2024 scenario: later issue_date wins regardless of import order', () => {
+  const laterFile = path.join(DOCS_PAYSLIP_DIR, '2024/Brutto-Netto-Abrechnung 2024 10 Oktober.pdf'); // issue_date 2024-10-25
+  const earlierFile = path.join(DOCS_PAYSLIP_DIR, '2024/Brutto-Netto-Abrechnung 2024 10 Oktober (2).pdf'); // issue_date 2024-10-14
+
+  // Order 1: earlier file first, then later file -> later file's values win.
+  {
+    const { db, dir, filerId } = createTempDb();
+    try {
+      const r1 = importPayslipFile(db, filerId, earlierFile);
+      assert.strictEqual(r1.imported, 1);
+
+      const r2 = importPayslipFile(db, filerId, laterFile);
+      assert.strictEqual(r2.imported, 0);
+      assert.strictEqual(r2.updated, 1, 'later-dated file should UPDATE the existing row');
+
+      const row = getPayslipRow(db, filerId, 2024, 10);
+      assert.strictEqual(row.issue_date, '2024-10-25', 'stored row must reflect the later file');
+      assert.strictEqual(row.source_pdf, 'Brutto-Netto-Abrechnung 2024 10 Oktober.pdf');
+
+      const countRow = db.prepare('SELECT COUNT(*) as count FROM payslips').get() as { count: number };
+      assert.strictEqual(countRow.count, 1, 'must still be exactly one row for Oct 2024 (UPDATE in place, not a second INSERT)');
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // Order 2 (reversed): later file first, then earlier file -> earlier file
+  // must be discarded/skipped, not applied.
+  {
+    const { db, dir, filerId } = createTempDb();
+    try {
+      const r1 = importPayslipFile(db, filerId, laterFile);
+      assert.strictEqual(r1.imported, 1);
+
+      const r2 = importPayslipFile(db, filerId, earlierFile);
+      assert.strictEqual(r2.imported, 0);
+      assert.strictEqual(r2.updated, 0, 'earlier-dated file must NOT update the existing row');
+      assert.strictEqual(r2.skipped.length, 1);
+      assert.match(r2.skipped[0], /discarded in favor of existing higher-precedence row/);
+
+      const row = getPayslipRow(db, filerId, 2024, 10);
+      assert.strictEqual(row.issue_date, '2024-10-25', 'stored row must still reflect the later (first-imported) file');
+      assert.strictEqual(row.source_pdf, 'Brutto-Netto-Abrechnung 2024 10 Oktober.pdf');
+
+      const countRow = db.prepare('SELECT COUNT(*) as count FROM payslips').get() as { count: number };
+      assert.strictEqual(countRow.count, 1);
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('idempotency: importing the same small set of real files twice produces 0 imported / 0 updated on the second pass', () => {
+  const { db, dir, filerId } = createTempDb();
+
+  try {
+    const files = [
+      path.join(DOCS_PAYSLIP_DIR, '2024/Brutto-Netto-Abrechnung 2024 03 März.pdf'),
+      path.join(DOCS_PAYSLIP_DIR, '2024/Brutto-Netto-Abrechnung 2024 04 April.pdf'),
+      path.join(DOCS_PAYSLIP_DIR, '2025/Payslip-2025-04-2025-04-25-311527.pdf'),
+      path.join(DOCS_PAYSLIP_DIR, '2026/Payslip-2026-03-2026-03-26-366408.pdf'),
+    ];
+
+    let firstImported = 0;
+    let firstUpdated = 0;
+    for (const f of files) {
+      const r = importPayslipFile(db, filerId, f);
+      firstImported += r.imported;
+      firstUpdated += r.updated;
+    }
+    assert.ok(firstImported > 0, 'first pass should import something');
+
+    let secondImported = 0;
+    let secondUpdated = 0;
+    for (const f of files) {
+      const r = importPayslipFile(db, filerId, f);
+      secondImported += r.imported;
+      secondUpdated += r.updated;
+    }
+
+    assert.strictEqual(secondImported, 0, 'second pass should import 0 new rows');
+    assert.strictEqual(secondUpdated, 0, 'second pass should update 0 rows (nothing new/better-precedence arrived)');
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Meldebescheinigung skip case: no DB writes, no crash', () => {
+  const { db, dir, filerId } = createTempDb();
+
+  try {
+    const result = importPayslipFile(
+      db,
+      filerId,
+      path.join(DOCS_PAYSLIP_DIR, '2024/Meldebescheinigung zur Sozialversicherung 2024 08 August.pdf')
+    );
+
+    assert.strictEqual(result.imported, 0);
+    assert.strictEqual(result.updated, 0);
+    assert.strictEqual(result.errors.length, 0);
+    assert.strictEqual(result.skipped.length, 1);
+    assert.match(result.skipped[0], /Meldebescheinigung zur Sozialversicherung/);
+
+    const total = db.prepare('SELECT COUNT(*) as count FROM payslips').get() as { count: number };
+    assert.strictEqual(total.count, 0);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('importPayslipsFromDirectory: walks a whole directory and is idempotent on re-run', () => {
+  const { db, dir, filerId } = createTempDb();
+
+  try {
+    const dir2024 = path.join(DOCS_PAYSLIP_DIR, '2024');
+
+    const first = importPayslipsFromDirectory(db, filerId, dir2024);
+    assert.ok(first.imported > 0, 'first pass over 2024 dir should import something');
+    assert.strictEqual(first.errors.length, 0);
+
+    const totalAfterFirst = db.prepare('SELECT COUNT(*) as count FROM payslips').get() as { count: number };
+
+    const second = importPayslipsFromDirectory(db, filerId, dir2024);
+    assert.strictEqual(second.imported, 0, 're-running the same directory should import 0 new rows');
+    assert.strictEqual(second.updated, 0, 're-running the same directory should update 0 rows');
+
+    const totalAfterSecond = db.prepare('SELECT COUNT(*) as count FROM payslips').get() as { count: number };
+    assert.strictEqual(totalAfterSecond.count, totalAfterFirst.count, 'row count unchanged after re-run');
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

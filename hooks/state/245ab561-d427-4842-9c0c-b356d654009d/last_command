@@ -1,0 +1,1 @@
+grep -nE "\.(get|post|patch|put|delete)\(['\"]\/api" src/api/server.ts | head -50

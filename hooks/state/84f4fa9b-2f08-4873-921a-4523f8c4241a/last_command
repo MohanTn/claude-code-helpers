@@ -1,0 +1,1 @@
+pwd && cd /home/mohan/REPO/finance-analyser && cat docker-compose.yml

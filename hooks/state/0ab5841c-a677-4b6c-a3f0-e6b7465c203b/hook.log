@@ -1,0 +1,16 @@
+[20:21:14] read-cache: blocked re-read of /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Import/TaxCalculator.cs (unchanged)
+[20:21:44] post-edit: build errors in /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Import/TaxCalculator.cs
+[20:21:55] post-edit: build errors in /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Import/TaxCalculator.cs
+[20:22:56] post-edit: build errors in /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Api/Endpoints/TaxEndpoints.cs
+[20:23:16] post-edit: build errors in /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Api/Endpoints/TaxEndpoints.cs
+[20:27:59] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/api/tax.ts
+[20:29:14] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/lib/queryKeys.ts
+[20:29:47] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/components/income-tax/WerbungskostenDialog.tsx
+[20:30:21] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/components/income-tax/WerbungskostenCard.tsx
+[20:30:55] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/components/settings/TaxFilersSection.tsx
+[20:32:30] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/components/income-tax/TaxWaterfallCard.tsx
+[20:33:22] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/components/IncomeTaxDashboard.tsx
+[20:49:13] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/components/income-tax/PayslipImportCard.tsx
+[20:49:46] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/components/income-tax/HealthInsuranceCertificateCard.tsx
+[20:50:31] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/components/income-tax/FreelanceIncomeCard.tsx
+[20:51:13] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/components/income-tax/DataSourcesCard.tsx

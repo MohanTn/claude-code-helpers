@@ -1,0 +1,484 @@
+     1	using Dapper;
+     2	using FinanceAnalyser.Core.Tax;
+     3	using FinanceAnalyser.Data;
+     4	using Microsoft.Data.Sqlite;
+     5	
+     6	namespace FinanceAnalyser.Import;
+     7	
+     8	/// <summary>
+     9	/// Tax calculation orchestrator: combines both filers' gross income,
+    10	/// Werbungskosten (employee) or business expenses (freelancer),
+    11	/// Vorsorgeaufwendungen (payslip contributions + Insurance-category
+    12	/// fallback), and property rental results into a combined zvE, then
+    13	/// applies Splitting (§§26/26b EStG) + Solidaritätszuschlag.
+    14	///
+    15	/// Tax class only affects monthly withholding display, never this
+    16	/// calculation. No Kirchensteuer is computed (household has no
+    17	/// church-tax members).
+    18	///
+    19	/// Ported 1:1 from src/tax/calculation.ts.
+    20	/// </summary>
+    21	public static class TaxCalculator
+    22	{
+    23	    /// <summary>
+    24	    /// Full tax calculation for the household in `year`, combining both
+    25	    /// filers' incomes, deductions, property results, and social
+    26	    /// contributions.
+    27	    /// </summary>
+    28	    public static TaxCalculationResult CalculateTax(SqliteConnection connection, int year)
+    29	    {
+    30	        // ── 1. Fetch tax filers ──────────────────────────────────────────
+    31	        var employee = Db.GetFilerByRole(connection, "employee");
+    32	        var freelancer = Db.GetFilerByRole(connection, "freelancer");
+    33	
+    34	        // ── 2. Fetch payslip data for the employee ───────────────────────
+    35	        var payslips = employee is not null
+    36	            ? Db.GetPayslips(connection, employee.Id, year)
+    37	            : Array.Empty<Data.Models.PayslipRecord>();
+    38	
+    39	        var nonCorrected = payslips.Where(p => p.IsCorrection == 0).ToList();
+    40	
+    41	        // Gross income from payslips (sum of all non-correction months' gross).
+    42	        var grossIncome = nonCorrected.Sum(p => p.GrossCents);
+    43	
+    44	        // Social contributions from payslips — total and per-component breakdown.
+    45	        // NOTE: on Infoniqa payslips, health_cents/care_cents are
+    46	        // "AG-Zuschuss private Kranken-/Pflegevers." — the EMPLOYER's tax-free
+    47	        // subsidy toward private insurance (§3 Nr. 62 EStG), not an employee
+    48	        // contribution. They must not be added to payslipVorsorge; instead they
+    49	        // reduce the deductible premium below (§3c EStG bars deducting the
+    50	        // subsidized portion).
+    51	        var payslipPension = nonCorrected.Sum(p => p.PensionCents);
+    52	        var payslipUnemployment = nonCorrected.Sum(p => p.UnemploymentCents);
+    53	        var employerHealthSubsidy = nonCorrected.Sum(p => p.HealthCents);
+    54	        var employerCareSubsidy = nonCorrected.Sum(p => p.CareCents);
+    55	        var employerHealthCareSubsidy = employerHealthSubsidy + employerCareSubsidy;
+    56	        var payslipVorsorge = payslipPension + payslipUnemployment;
+    57	
+    58	        // Already withheld income tax (sum of non-correction months' income_tax_cents).
+    59	        var alreadyWithheld = nonCorrected.Sum(p => p.IncomeTaxCents);
+    60	
+    61	        // ── 3. Werbungskosten: itemized expenses vs the flat Pauschale, whichever is higher ─
+    62	        var flatPauschale = TaxConstants.WerbungskostenPauschaleByYear.TryGetValue(year, out var wkPauschale)
+    63	            ? wkPauschale
+    64	            : 123_000; // default to €1,230
+    65	
+    66	        var itemizedWk = employee is not null ? Db.GetWerbungskostenItemized(connection, employee.Id, year) : null;
+    67	
+    68	        long entfernungspauschaleCents = 0;
+    69	        long tagespauschaleCents = 0;
+    70	        long workEquipmentCents = 0;
+    71	        long homeOfficeRoomCents = 0;
+    72	        if (itemizedWk is not null)
+    73	        {
+    74	            if (TaxConstants.EntfernungspauschaleRatesByYear.TryGetValue(year, out var kmRate)
+    75	                && itemizedWk.CommuteKm > 0 && itemizedWk.CommuteDays > 0)
+    76	            {
+    77	                var firstTierKm = Math.Min(itemizedWk.CommuteKm, kmRate.FirstTierKm);
+    78	                var beyondTierKm = Math.Max(0, itemizedWk.CommuteKm - kmRate.FirstTierKm);
+    79	                var computedCents = itemizedWk.CommuteDays *
+    80	                    (firstTierKm * kmRate.FirstTierCentsPerKm + beyondTierKm * kmRate.BeyondTierCentsPerKm);
+    81	                // §9 Abs.1 Satz 3 Nr.4 Satz 4 EStG: take the actual ÖPNV cost
+    82	                // instead, if it's higher than the computed Entfernungspauschale.
+    83	                entfernungspauschaleCents = Math.Max(computedCents, itemizedWk.PublicTransportAnnualCents);
+    84	            }
+    85	
+    86	            if (TaxConstants.TagespauschaleByYear.TryGetValue(year, out var dayRate) && itemizedWk.HomeOfficeDays > 0)
+    87	            {
+    88	                var cappedDays = Math.Min(itemizedWk.HomeOfficeDays, dayRate.MaxDays);
+    89	                tagespauschaleCents = cappedDays * dayRate.CentsPerDay;
+    90	            }
+    91	
+    92	            workEquipmentCents = itemizedWk.WorkEquipmentCents;
+    93	            homeOfficeRoomCents = itemizedWk.HomeOfficeRoomCents;
+    94	        }
+    95	
+    96	        var itemizedWkTotalCents = entfernungspauschaleCents + tagespauschaleCents + workEquipmentCents + homeOfficeRoomCents;
+    97	        var usedItemizedWk = itemizedWkTotalCents > flatPauschale;
+    98	        var werbungskosten = usedItemizedWk ? itemizedWkTotalCents : flatPauschale;
+    99	
+   100	        // ── 4. Freelance income (if any) ──────────────────────────────────
+   101	        long freelanceRevenue = 0;
+   102	        long freelanceExpenses = 0;
+   103	        long freelancerVorsorge = 0;
+   104	        long freelancerHealthVorsorge = 0;
+   105	        long freelancerPensionVorsorge = 0;
+   106	        long freelancerAdvanceTax = 0;
+   107	
+   108	        if (freelancer is not null)
+   109	        {
+   110	            var fi = Db.GetFreelanceIncome(connection, freelancer.Id, year);
+   111	            if (fi is not null)
+   112	            {
+   113	                freelanceRevenue = fi.RevenueCents;
+   114	                freelanceExpenses = fi.BusinessExpensesCents;
+   115	                freelancerHealthVorsorge = fi.HealthInsuranceCents;
+   116	                freelancerPensionVorsorge = fi.PensionInsuranceCents;
+   117	                freelancerVorsorge = freelancerHealthVorsorge + freelancerPensionVorsorge;
+   118	                freelancerAdvanceTax = fi.AdvanceTaxPaidCents;
+   119	            }
+   120	        }
+   121	
+   122	        // Add freelancer's advance tax payments (Vorauszahlungen) to already withheld.
+   123	        alreadyWithheld += freelancerAdvanceTax;
+   124	
+   125	        // ── 5. Vorsorgeaufwendungen ───────────────────────────────────────
+   126	        // Sum: payslip contributions + freelancer health/pension (if entered)
+   127	        // or Insurance-category fallback when freelancer data is missing.
+   128	        // Payslip contributions always count (they are mandatory social security).
+   129	        // Insurance transactions only serve as fallback for missing freelancer data
+   130	        // to avoid double-counting if the freelancer entered both.
+   131	        // The insurer's own annual certificate (Beitragsbescheinigung) reports
+   132	        // exactly the Basisabsicherung-equivalent premium — the figure that's
+   133	        // actually deductible under §10 Abs. 1 Nr. 3 EStG — so it takes
+   134	        // precedence whenever one has been uploaded for this filer/year.
+   135	        var healthCertificate = employee is not null
+   136	            ? Db.GetHealthInsuranceCertificate(connection, employee.Id, year)
+   137	            : null;
+   138	
+   139	        long insuranceTotal = 0;
+   140	        if (healthCertificate is not null)
+   141	        {
+   142	            insuranceTotal = healthCertificate.HealthCents + healthCertificate.CareCents;
+   143	        }
+   144	        else if (freelancerVorsorge == 0)
+   145	        {
+   146	            // 'Insurance' (per the PRD's canonical category taxonomy) also covers
+   147	            // Bayern-Versicherung (life) and Neodigital Versicherung (general),
+   148	            // neither of which is deductible Krankenversicherung — only HALLESCHE
+   149	            // (private health insurance) counts here. Sum gross premium debits only;
+   150	            // the monthly Bonuszahlung is Hallesche's healthy-behavior bonus, not a
+   151	            // Beitragsrückerstattung, so per BMF guidance / BFH X R 16/19 it does
+   152	            // not reduce the deductible amount and must be excluded, not netted.
+   153	            // This is only a fallback for filers without an uploaded certificate —
+   154	            // it can't distinguish non-deductible riders bundled into the same debit.
+   155	            insuranceTotal = connection.ExecuteScalar<long?>(
+   156	                """
+   157	                SELECT COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) as total
+   158	                FROM transactions
+   159	                WHERE category = 'Insurance'
+   160	                  AND description LIKE '%HALLESCHE%'
+   161	                  AND date >= @StartDate AND date < @EndDate
+   162	                """,
+   163	                new { StartDate = $"{year}-01-01", EndDate = $"{year + 1}-01-01" }) ?? 0;
+   164	        }
+   165	
+   166	        // Beitragsrückerstattung: HALLESCHE's "Bonuszahlung" credits are a
+   167	        // healthy-behavior bonus on a *private* policy, which is a distinct
+   168	        // question from the BFH X R 16/19 ruling (that case concerned the
+   169	        // §65a SGB V statutory-GKV bonus). This household's own ELSTER
+   170	        // assessment nets these credits against the deductible premium as a
+   171	        // genuine Beitragsrückerstattung, so this does the same — independent
+   172	        // of whether the certificate or the bank-transaction fallback above
+   173	        // supplied the gross premium.
+   174	        var beitragsrueckerstattungCents = connection.ExecuteScalar<long?>(
+   175	            """
+   176	            SELECT COALESCE(SUM(amount_cents), 0) as total
+   177	            FROM transactions
+   178	            WHERE category = 'Insurance'
+   179	              AND description LIKE '%HALLESCHE%'
+   180	              AND description LIKE '%Bonuszahlung%'
+   181	              AND amount_cents > 0
+   182	              AND date >= @StartDate AND date < @EndDate
+   183	            """,
+   184	            new { StartDate = $"{year}-01-01", EndDate = $"{year + 1}-01-01" }) ?? 0;
+   185	
+   186	        // Net the Beitragsrückerstattung and the employer's tax-free
+   187	        // Arbeitgeberzuschuss against the private Kranken-/Pflegeversicherung
+   188	        // premium. The single HALLESCHE bank debit bundles both Kranken and
+   189	        // Pflege, so both subsidy components are netted against it together
+   190	        // rather than tracked as a separate "care" deduction.
+   191	        var netHealthCareCents = Math.Max(0, insuranceTotal - beitragsrueckerstattungCents - employerHealthSubsidy - employerCareSubsidy);
+   192	
+   193	        // Altersvorsorgeaufwendungen (pension): 100% deductible, no cap.
+   194	        var altersvorsorge = payslipPension + freelancerPensionVorsorge;
+   195	
+   196	        // Sonstige Vorsorgeaufwendungen (unemployment + health/care insurance):
+   197	        // capped per §10 Abs. 4 EStG at €1,900/person (employee, subsidized
+   198	        // health insurance) or €2,800/person (self-employed, no subsidy) —
+   199	        // but never below the actual basic health + long-term-care premiums
+   200	        // (Mindestbetrag, §10 Abs. 4 Satz 4), which in practice dominates the
+   201	        // cap once private health insurance is involved.
+   202	        var sonstigeVorsorgeActual = payslipUnemployment + netHealthCareCents + freelancerHealthVorsorge;
+   203	        var basicHealthCareFloor = netHealthCareCents + freelancerHealthVorsorge;
+   204	        // §10 Abs.4 EStG cap: €1,900/person for anyone entitled to subsidized,
+   205	        // statutory-equivalent coverage (the common case — e.g. a spouse
+   206	        // co-insured under the same employer-subsidized family policy), or
+   207	        // €2,800/person otherwise. This is a property of each filer's own
+   208	        // insurance situation (tracked on tax_filers), not of whether they
+   209	        // happen to have freelance revenue.
+   210	        var sonstigeVorsorgeCap = new[] { employee, freelancer }
+   211	            .Where(f => f is not null)
+   212	            .Sum(f => f!.HasSubsidizedHealthInsurance
+   213	                ? TaxConstants.SonstigeVorsorgeCapEmployeeCents
+   214	                : TaxConstants.SonstigeVorsorgeCapFreelancerCents);
+   215	        var sonstigeVorsorgeDeductible = Math.Max(Math.Min(sonstigeVorsorgeActual, sonstigeVorsorgeCap), basicHealthCareFloor);
+   216	
+   217	        var vorsorgeaufwendungen = altersvorsorge + sonstigeVorsorgeDeductible;
+   218	
+   219	        // ── 6. Property rental result ─────────────────────────────────────
+   220	        var rentalResult = PropertyAnnualResultCalculator.CalculatePropertiesAnnualResult(connection, year);
+   221	
+   222	        // ── 7a. Filing settings — needed before zvE since the Sonderausgaben-
+   223	        // Pauschbetrag (§10c EStG) depends on filing status.
+   224	        // Splitting (§§26/26b EStG) only applies when tax_filing_settings
+   225	        // explicitly says 'joint' (married couples filing together). A single
+   226	        // person with both employee + freelance income still uses Grundtabelle.
+   227	        var filingSettings = Db.GetTaxFilingSettings(connection, year);
+   228	        var filingStatus = filingSettings?.FilingStatus == "joint" ? FilingStatus.Joint : FilingStatus.Single;
+   229	        var sonderausgabenPauschbetrag = filingStatus == FilingStatus.Joint
+   230	            ? TaxConstants.SonderausgabenPauschbetragJointCents
+   231	            : TaxConstants.SonderausgabenPauschbetragSingleCents;
+   232	
+   233	        // ── 7b. Compute combined taxable income (zvE) ──────────────────────
+   234	        // Employee: gross income - Werbungskosten (never below 0)
+   235	        var employeeNet = Math.Max(0, grossIncome - werbungskosten);
+   236	        // Freelancer: revenue - business expenses (never below 0)
+   237	        var freelanceNet = Math.Max(0, freelanceRevenue - freelanceExpenses);
+   238	
+   239	        // Gesamtbetrag der Einkünfte: sum of each income type, each already net
+   240	        // of its own costs (Werbungskosten / business expenses / rental costs) —
+   241	        // the subtotal ELSTER prints before Sonderausgaben are applied.
+   242	        var gesamtbetragDerEinkuenfte = employeeNet + freelanceNet + rentalResult.NetRentalResultCents;
+   243	
+   244	        var einkommen = gesamtbetragDerEinkuenfte - vorsorgeaufwendungen - sonderausgabenPauschbetrag;
+   245	
+   246	        // Härteausgleich (§46 Abs.3/5 EStG): sliding relief on minor
+   247	        // "Nebeneinkünfte" (income not subject to wage-tax withholding — here
+   248	        // freelance profit + rental result) below €820.
+   249	        var nebeneinkuenfte = Math.Max(0, freelanceNet + rentalResult.NetRentalResultCents);
+   250	        var haerteausgleich = IncomeTax.Haerteausgleich(nebeneinkuenfte);
+   251	
+   252	        var taxableIncome = einkommen - haerteausgleich;
+   253	
+   254	        // Floor taxable income to 0 (no negative zvE).
+   255	        var zvE = Math.Max(0, taxableIncome);
+   256	
+   257	        var incomeTax = filingStatus == FilingStatus.Joint
+   258	            ? IncomeTax.CalculateSplittingTax(zvE, 0, year)
+   259	            : IncomeTax.CalculateIncomeTax(zvE, year);
+   260	
+   261	        // ── 9. Solidarity Surcharge ───────────────────────────────────────
+   262	        var soli = IncomeTax.CalculateSolidaritySurcharge(incomeTax, year, filingStatus);
+   263	
+   264	        // ── 10. Determine bracket zone ────────────────────────────────────
+   265	        // Under Splitting, the relevant bracket is determined by zvE/2,
+   266	        // not the combined zvE. Under Grundtabelle, use the full zvE.
+   267	        TaxConstants.TaxBracketsByYear.TryGetValue(year, out var bracket);
+   268	        var relevantZvECents = filingStatus == FilingStatus.Joint ? FloorDivBy2(zvE) : zvE;
+   269	        var zone = 0;
+   270	        if (bracket is not null)
+   271	        {
+   272	            var x = FloorDiv100(relevantZvECents);
+   273	            if (x <= FloorDiv100(bracket.GrundfreibetragCents)) zone = 1;
+   274	            else if (x <= FloorDiv100(bracket.Zone2UpperCents)) zone = 2;
+   275	            else if (x <= FloorDiv100(bracket.Zone3UpperCents)) zone = 3;
+   276	            else if (x < FloorDiv100(bracket.Zone5LowerCents)) zone = 4;
+   277	            else zone = 5;
+   278	        }
+   279	
+   280	        // Grenzsteuersatz (marginal rate) at the rate-determining income.
+   281	        var marginalRate = IncomeTax.MarginalTaxRate(relevantZvECents, year);
+   282	
+   283	        // ── 11. Final numbers ─────────────────────────────────────────────
+   284	        var totalTax = incomeTax + soli;
+   285	        var refundOrOwed = alreadyWithheld - totalTax;
+   286	        // Social Contributions: payroll-deducted pension + unemployment, plus
+   287	        // the employee's actual out-of-pocket medical insurance cost — the
+   288	        // private Kranken-/Pflegeversicherung premium net of the employer's
+   289	        // tax-free subsidy (netHealthCareCents, §3 Nr. 62 EStG already netted
+   290	        // out above). This is the real cash the household pays for statutory-
+   291	        // equivalent health/care cover, even though it leaves via a bank debit
+   292	        // rather than payroll withholding.
+   293	        var socialContributions = payslipVorsorge + netHealthCareCents;
+   294	
+   295	        // Net in hand: a plain waterfall of numbers that are all already shown
+   296	        // elsewhere on this page — no hidden figure (e.g. a payslip's "payout",
+   297	        // which silently folds in the employer's tax-free health/care subsidy)
+   298	        // feeds into it.
+   299	        // Gross Income - Tax Already Withheld - Social Contributions (pension +
+   300	        // unemployment + net medical insurance) - Freelance Business Expenses
+   301	        // + Refund (or - Amount Owed)
+   302	        var netInHand =
+   303	            grossIncome + freelanceRevenue - alreadyWithheld - socialContributions - freelanceExpenses + refundOrOwed;
+   304	
+   305	        // Durchschnittssteuersatz (average rate): assessed tax over taxable income.
+   306	        var averageTaxRate = zvE > 0 ? (double)incomeTax / zvE : 0;
+   307	
+   308	        return new TaxCalculationResult(
+   309	            GrossIncomeCents: grossIncome + freelanceRevenue,
+   310	            WerbungskostenCents: werbungskosten,
+   311	            FreelanceRevenueCents: freelanceRevenue,
+   312	            FreelanceExpensesCents: freelanceExpenses,
+   313	            RentalResultCents: rentalResult.NetRentalResultCents,
+   314	            SonderausgabenPauschbetragCents: sonderausgabenPauschbetrag,
+   315	            VorsorgeaufwendungenCents: vorsorgeaufwendungen,
+   316	            // Health always shows the full basic-health/care floor (it's never
+   317	            // reduced); Unemployment shows only whatever deductible room is
+   318	            // left over above that floor — zero once the floor alone already
+   319	            // meets or exceeds the deductible sonstige total, since at that
+   320	            // point unemployment contributes nothing extra (see Vorsorgeaufwendungen
+   321	            // cap/floor comment above). This keeps the breakdown summing exactly
+   322	            // to VorsorgeaufwendungenCents instead of showing a misleading raw
+   323	            // contribution that isn't actually deductible.
+   324	            VorsorgeBreakdown: new VorsorgeBreakdown(
+   325	                PensionCents: payslipPension + freelancerPensionVorsorge,
+   326	                UnemploymentCents: Math.Max(0, sonstigeVorsorgeDeductible - basicHealthCareFloor),
+   327	                HealthCents: basicHealthCareFloor,
+   328	                CareCents: 0,
+   329	                BeitragsrueckerstattungCents: beitragsrueckerstattungCents),
+   330	            WerbungskostenBreakdown: new WerbungskostenBreakdown(
+   331	                EntfernungspauschaleCents: entfernungspauschaleCents,
+   332	                TagespauschaleCents: tagespauschaleCents,
+   333	                WorkEquipmentCents: workEquipmentCents,
+   334	                HomeOfficeRoomCents: homeOfficeRoomCents,
+   335	                FlatPauschaleCents: flatPauschale,
+   336	                UsedItemized: usedItemizedWk),
+   337	            GesamtbetragDerEinkuenfteCents: gesamtbetragDerEinkuenfte,
+   338	            HaerteausgleichCents: haerteausgleich,
+   339	            RentalBreakdown: new RentalBreakdown(
+   340	                RentalIncomeCents: rentalResult.TotalRentalIncomeCents,
+   341	                MortgageInterestCents: rentalResult.TotalMortgageInterestCents,
+   342	                AfaCents: rentalResult.TotalAfaCents,
+   343	                MaintenanceCents: rentalResult.TotalMaintenanceCents,
+   344	                PropertyTaxCents: rentalResult.TotalPropertyTaxCents),
+   345	            TaxableIncomeCents: zvE,
+   346	            IncomeTaxCents: incomeTax,
+   347	            SolidaritySurchargeCents: soli,
+   348	            SocialContributionsCents: socialContributions,
+   349	            AlreadyWithheldCents: alreadyWithheld,
+   350	            RefundOrOwedCents: refundOrOwed,
+   351	            NetInHandCents: netInHand,
+   352	            EmployerHealthCareSubsidyCents: employerHealthCareSubsidy,
+   353	            BracketZone: zone,
+   354	            SplittingApplied: filingStatus == FilingStatus.Joint,
+   355	            RateDeterminingIncomeCents: relevantZvECents,
+   356	            AverageTaxRate: averageTaxRate,
+   357	            MarginalTaxRate: marginalRate,
+   358	            InsuranceTransactionsTotalCents: insuranceTotal,
+   359	            HealthInsuranceCertificateCents: healthCertificate is not null ? insuranceTotal : null,
+   360	            MonthsImported: nonCorrected.Select(p => p.Month).Distinct().OrderBy(m => m).ToList(),
+   361	            Payslips: payslips.Select(p => new TaxCalculationPayslip(
+   362	                Id: p.Id,
+   363	                Month: p.Month,
+   364	                GrossCents: p.GrossCents,
+   365	                IncomeTaxCents: p.IncomeTaxCents,
+   366	                SolidaritySurchargeCents: p.SolidaritySurchargeCents,
+   367	                PensionCents: p.PensionCents,
+   368	                UnemploymentCents: p.UnemploymentCents,
+   369	                HealthCents: p.HealthCents,
+   370	                CareCents: p.CareCents,
+   371	                NetCents: p.NetCents,
+   372	                PayoutCents: p.PayoutCents,
+   373	                IsCorrection: p.IsCorrection,
+   374	                SourceFormat: p.SourceFormat)).ToList());
+   375	    }
+   376	
+   377	    /// <summary>
+   378	    /// Floors a cents value down to whole euros (matches JS
+   379	    /// <c>Math.floor(cents / 100)</c>).
+   380	    /// </summary>
+   381	    private static long FloorDiv100(long cents) => (long)Math.Floor(cents / 100.0);
+   382	
+   383	    /// <summary>
+   384	    /// Floors a value divided by 2 (matches JS <c>Math.floor(zvE / 2)</c>,
+   385	    /// including for negative inputs).
+   386	    /// </summary>
+   387	    private static long FloorDivBy2(long value) => (long)Math.Floor(value / 2.0);
+   388	}
+   389	
+   390	/// <summary>Per-component breakdown of Vorsorgeaufwendungen (social insurance contributions).</summary>
+   391	public record VorsorgeBreakdown(
+   392	    long PensionCents,       // Rentenversicherung
+   393	    long UnemploymentCents,  // Arbeitslosenversicherung
+   394	    long HealthCents,        // Krankenversicherung (already net of Beitragsrückerstattung + employer subsidy)
+   395	    long CareCents,          // Pflegeversicherung
+   396	    long BeitragsrueckerstattungCents); // Premium refund already netted out of HealthCents above, shown for display
+   397	
+   398	/// <summary>Per-component breakdown of itemized Werbungskosten vs the flat Pauschale.</summary>
+   399	public record WerbungskostenBreakdown(
+   400	    long EntfernungspauschaleCents,  // Commute allowance
+   401	    long TagespauschaleCents,        // Homeoffice day-rate allowance
+   402	    long WorkEquipmentCents,         // Arbeitsmittel
+   403	    long HomeOfficeRoomCents,        // häusliches Arbeitszimmer
+   404	    long FlatPauschaleCents,         // The flat allowance itemized is being compared against
+   405	    bool UsedItemized);              // Whether itemized (true) or the flat Pauschale (false) was higher
+   406	
+   407	/// <summary>Per-component breakdown of rental property results.</summary>
+   408	public record RentalBreakdown(
+   409	    long RentalIncomeCents,      // Sum of all rent credits
+   410	    long MortgageInterestCents,  // Interest payment from EMIs
+   411	    long AfaCents,                // Depreciation (Abschreibung)
+   412	    long MaintenanceCents,       // Maintenance & repairs (from Property tab)
+   413	    long PropertyTaxCents);      // Property tax (from Property tab)
+   414	
+   415	/// <summary>Payslip projection embedded in <see cref="TaxCalculationResult"/>.Payslips.</summary>
+   416	public record TaxCalculationPayslip(
+   417	    long Id,
+   418	    int Month,
+   419	    long GrossCents,
+   420	    long IncomeTaxCents,
+   421	    long SolidaritySurchargeCents,
+   422	    long PensionCents,
+   423	    long UnemploymentCents,
+   424	    long HealthCents,
+   425	    long CareCents,
+   426	    long NetCents,
+   427	    long PayoutCents,
+   428	    long IsCorrection,
+   429	    string SourceFormat);
+   430	
+   431	/// <summary>
+   432	/// Full tax calculation for the household in a given year, combining both
+   433	/// filers' incomes, deductions, property results, and social contributions.
+   434	/// Ported field-for-field from TaxCalculationResult in src/tax/calculation.ts.
+   435	/// </summary>
+   436	public record TaxCalculationResult(
+   437	    long GrossIncomeCents,
+   438	    long WerbungskostenCents,
+   439	    long FreelanceRevenueCents,
+   440	    long FreelanceExpensesCents,
+   441	    long RentalResultCents,
+   442	    /// <summary>Sonderausgaben-Pauschbetrag (§10c EStG): €36 single / €72 joint flat allowance.</summary>
+   443	    long SonderausgabenPauschbetragCents,
+   444	    long VorsorgeaufwendungenCents,
+   445	    /// <summary>Breakdown of Vorsorgeaufwendungen for display</summary>
+   446	    VorsorgeBreakdown VorsorgeBreakdown,
+   447	    /// <summary>Breakdown of rental property result for display</summary>
+   448	    RentalBreakdown RentalBreakdown,
+   449	    /// <summary>Breakdown of itemized Werbungskosten vs the flat Pauschale for display</summary>
+   450	    WerbungskostenBreakdown WerbungskostenBreakdown,
+   451	    /// <summary>
+   452	    /// Gesamtbetrag der Einkünfte (§2 Abs.3 EStG): sum of each income type,
+   453	    /// each already net of its own costs — the subtotal ELSTER prints before
+   454	    /// Sonderausgaben are applied.
+   455	    /// </summary>
+   456	    long GesamtbetragDerEinkuenfteCents,
+   457	    /// <summary>
+   458	    /// Härteausgleich (§46 Abs.3/5 EStG): sliding relief on minor side income
+   459	    /// below €820, subtracted between "Einkommen" and "zu versteuerndes
+   460	    /// Einkommen" in ELSTER's own presentation order.
+   461	    /// </summary>
+   462	    long HaerteausgleichCents,
+   463	    long TaxableIncomeCents,
+   464	    long IncomeTaxCents,
+   465	    long SolidaritySurchargeCents,
+   466	    /// <summary>
+   467	    /// Payroll-deducted pension + unemployment contributions, plus the
+   468	    /// employee's net out-of-pocket medical insurance cost (private Kranken-/
+   469	    /// Pflegeversicherung premium after the employer's tax-free subsidy).
+   470	    /// </summary>
+   471	    long SocialContributionsCents,
+   472	    long AlreadyWithheldCents,
+   473	    long RefundOrOwedCents,
+   474	    long NetInHandCents,
+   475	    /// <summary>
+   476	    /// Employer's tax-free Arbeitgeberzuschuss to private Kranken-/Pflegeversicherung
+   477	    /// (§3 Nr. 62 EStG). Lands in the bank payout alongside net pay but is excluded
+   478	    /// from NetInHandCents — it's earmarked to cover part of the HALLESCHE premium
+   479	    /// (already netted against it in VorsorgeBreakdown.HealthCents), not disposable
+   480	    /// income. Shown here so dashboards can explain why bank-statement income looks
+   481	    /// higher than NetInHandCents.
+   482	    /// </summary>
+   483	    long EmployerHealthCareSubsidyCents,
+   4

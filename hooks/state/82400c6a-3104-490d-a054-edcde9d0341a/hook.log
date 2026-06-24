@@ -1,0 +1,13 @@
+[08:54:43] session-start: regenerated digest for /home/mohan/REPO/finance-analyser
+[08:57:34] bash-post: trimmed 230-line output, saved to /home/mohan/.claude/hooks/state/logs/1782197854538398380.log
+[09:08:53] post-edit: build errors in /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Import/TaxCalculator.cs
+[09:09:28] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/api/tax.ts
+[09:10:00] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/components/income-tax/TaxWaterfallCard.tsx
+[09:27:15] bash-post: trimmed 370-line output, saved to /home/mohan/.claude/hooks/state/logs/1782199635007880004.log
+[09:30:56] post-edit: build errors in /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Api/Endpoints/TaxEndpoints.cs
+[09:32:09] read-cache: blocked re-read of /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Import/TaxCalculator.cs (unchanged)
+[09:32:21] post-edit: build errors in /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Import/TaxCalculator.cs
+[09:45:45] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/components/income-tax/HealthInsuranceCertificateCard.tsx
+[09:46:13] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/components/IncomeTaxDashboard.tsx
+[09:46:44] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/components/income-tax/PayslipImportCard.tsx
+[10:22:46] read-cache: blocked re-read of /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Import/TaxCalculator.cs (unchanged)

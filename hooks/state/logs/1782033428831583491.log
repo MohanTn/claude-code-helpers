@@ -1,0 +1,340 @@
+    // Get total count
+    const countRow = db
+      .prepare(`SELECT COUNT(*) as count FROM transactions WHERE ${whereClause}`)
+      .get(...params) as { count: number };
+    const total = countRow.count;
+
+    // Get paginated results
+    const countParams = params.slice(); // copy for count query
+    const transactions = db
+      .prepare(
+        `SELECT * FROM transactions
+       WHERE ${whereClause}
+       ORDER BY date DESC
+       LIMIT ? OFFSET ?`
+      )
+      .all(...params, limitNum, offsetNum) as any[];
+
+    return res.json({ transactions, total });
+  });
+
+  // ===== PATCH /api/transactions/:id =====
+  app.patch('/api/transactions/:id', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { category } = req.body;
+
+    if (!category || !CANONICAL_CATEGORIES.includes(category)) {
+      return res.status(400).json({ error: `Invalid category: ${category}` });
+    }
+
+    const txnId = parseInt(id, 10);
+    const existing = db.prepare('SELECT id FROM transactions WHERE id = ?').get(txnId);
+
+    if (!existing) {
+      return res.status(404).json({ error: 'not found' });
+    }
+
+    db.prepare('UPDATE transactions SET category = ?, is_manual_override = 1 WHERE id = ?').run(
+      category,
+      txnId
+    );
+
+    return res.json({ id: txnId, category, is_manual_override: true });
+  });
+
+  // Shared by /api/summary/categories and /api/summary/income-breakdown: turns
+  // a year (+ optional month) query param pair into a `date >= ... AND date < ...`
+  // SQL fragment and the "YYYY" or "YYYY-MM" period label.
+  function yearMonthFilter(year: string, month?: string): { dateFilter: string; period: string } {
+    const yearNum = parseInt(year, 10);
+    const monthNum = month ? parseInt(month, 10) : undefined;
+
+    let dateFilter: string;
+    if (monthNum !== undefined) {
+      const monthStr = String(monthNum).padStart(2, '0');
+      dateFilter = `date >= '${yearNum}-${monthStr}-01' AND date < '${yearNum}-${String(monthNum + 1).padStart(2, '0')}-01'`;
+      if (monthNum === 12) {
+        dateFilter = `date >= '${yearNum}-12-01' AND date < '${yearNum + 1}-01-01'`;
+      }
+    } else {
+      dateFilter = `date >= '${yearNum}-01-01' AND date < '${yearNum + 1}-01-01'`;
+    }
+
+    const period = monthNum !== undefined ? `${yearNum}-${String(monthNum).padStart(2, '0')}` : String(yearNum);
+    return { dateFilter, period };
+  }
+
+  // Shared by /api/summary/categories and /api/summary/income-breakdown.
+  function categoryAggregates(dateFilter: string): CategoryAgg[] {
+    return db
+      .prepare(
+        `SELECT category, SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END) as income_cents,
+                          SUM(CASE WHEN amount_cents < 0 THEN amount_cents ELSE 0 END) as expense_cents
+       FROM transactions
+       WHERE ${dateFilter} AND category != 'Internal Transfer' AND ${DOCUMENTATION_LINK_EXCLUSION_SQL}
+       GROUP BY category
+       ORDER BY category`
+      )
+      .all() as CategoryAgg[];
+  }
+
+  // ===== GET /api/summary/categories =====
+  app.get('/api/summary/categories', (req: Request, res: Response) => {
+    const { year, month } = req.query;
+
+    if (!year) {
+      return res.status(400).json({ error: 'Missing required parameter: year' });
+    }
+
+    const { dateFilter, period } = yearMonthFilter(String(year), month ? String(month) : undefined);
+    const rows = categoryAggregates(dateFilter);
+
+    const categories: Record<string, { income_cents: number; expense_cents: number }> = {};
+    for (const row of rows) {
+      categories[row.category] = {
+        income_cents: row.income_cents || 0,
+        expense_cents: row.expense_cents || 0,
+      };
+    }
+
+    return res.json({ period, categories });
+  });
+
+  // ===== GET /api/summary/income-breakdown =====
+  // Drives the "Income Breakdown" widget. All bucketing/netting/Saved logic
+  // lives in src/summary/buckets.ts, shared with monthly-buckets and
+  // cumulative-savings below, so the three widgets can never compute a
+  // different "Saved" figure for the same data again.
+  app.get('/api/summary/income-breakdown', (req: Request, res: Response) => {
+    const { year, month } = req.query;
+
+    if (!year) {
+      return res.status(400).json({ error: 'Missing required parameter: year' });
+    }
+
+    const { dateFilter, period } = yearMonthFilter(String(year), month ? String(month) : undefined);
+    const rows = categoryAggregates(dateFilter);
+    const breakdown = computeIncomeBreakdown(rows);
+
+    // Split Income into Salary / Health Insurance Subsidy / Additional Income.
+    // Salary and the subsidy come from payslips — net_cents is the salary
+    // itself, and (payout_cents - net_cents) is the employer's tax-free
+    // health/care subsidy added on top before the deposit hits the bank.
+    // Anything else tagged 'Income' in transactions (interest, refunds,
+    // freelance deposits, etc.) falls under Additional Income.
+    const yearNum = parseInt(String(year), 10);
+    const monthNum = month ? parseInt(String(month), 10) : undefined;
+    const employee = db
+      .prepare("SELECT id FROM tax_filers WHERE role = 'employee' ORDER BY id LIMIT 1")
+      .get() as { id: number } | undefined;
+
+    let salaryCents = 0;
+    let healthSubsidyCents = 0;
+    if (employee) {
+      const payslipRows = (
+        monthNum !== undefined
+          ? db
+              .prepare(
+                'SELECT net_cents, payout_cents FROM payslips WHERE filer_id = ? AND year = ? AND month = ? AND is_correction = 0'
+              )
+              .all(employee.id, yearNum, monthNum)
+          : db
+              .prepare(
+                'SELECT net_cents, payout_cents FROM payslips WHERE filer_id = ? AND year = ? AND is_correction = 0'
+              )
+              .all(employee.id, yearNum)
+      ) as { net_cents: number; payout_cents: number }[];
+
+      for (const p of payslipRows) {
+        salaryCents += p.net_cents;
+        healthSubsidyCents += Math.max(0, p.payout_cents - p.net_cents);
+      }
+    }
+
+    const additionalIncomeCents = Math.max(0, breakdown.income_cents - salaryCents - healthSubsidyCents);
+
+    return res.json({
+      period,
+      ...breakdown,
+      income_split: {
+        salary_cents: salaryCents,
+        health_insurance_subsidy_cents: healthSubsidyCents,
+        additional_income_cents: additionalIncomeCents,
+      },
+    });
+  });
+
+  // ===== GET /api/summary/income-expense =====
+  app.get('/api/summary/income-expense', (req: Request, res: Response) => {
+    const { start_date, end_date } = req.query;
+
+    let whereClause = `category != 'Internal Transfer' AND ${DOCUMENTATION_LINK_EXCLUSION_SQL}`;
+    if (start_date) {
+      whereClause += ` AND date >= '${start_date}'`;
+    }
+    if (end_date) {
+      whereClause += ` AND date <= '${end_date}'`;
+    }
+
+    const rows = db
+      .prepare(
+        `SELECT strftime('%Y-%m', date) as month,
+                SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END) as income_cents,
+                SUM(CASE WHEN amount_cents < 0 THEN amount_cents ELSE 0 END) as expense_cents
+       FROM transactions
+       WHERE ${whereClause}
+       GROUP BY strftime('%Y-%m', date)
+       ORDER BY month`
+      )
+      .all() as any[];
+
+    const months = rows.map((row) => ({
+      month: row.month,
+      income_cents: row.income_cents || 0,
+      expense_cents: row.expense_cents || 0,
+    }));
+
+    return res.json({ months });
+  });
+
+  // ===== GET /api/summary/monthly-buckets =====
+  // Returns per-month totals split into Income, Saving, Living Cost, Investment, Enjoyment.
+  // Income = only positive amounts from the 'Income' category (salary, tax refunds, etc.)
+  // Living/Enjoy = net of all amounts in those categories, so refunds/bonuses reduce the outflow
+  // Investment = outflow only (money sent TO investments) — treated like spend, it reduces
+  // Saving. Investment inflows (sell-trades, dividends) are excluded, never added back.
+  // Saving = Income - Living - Enjoyment - Investment outflow
+  // Query: ?year=2025
+  app.get('/api/summary/monthly-buckets', (req: Request, res: Response) => {
+    const year = String(req.query.year ?? new Date().getFullYear());
+
+    const rows = db.prepare(`
+      SELECT
+        substr(date, 1, 7) AS month,
+        COALESCE(SUM(CASE WHEN amount_cents > 0 AND category = 'Income' THEN amount_cents END), 0) AS income_cents,
+        COALESCE(SUM(CASE WHEN category IN (${LIVING_CATEGORIES_SQL}) THEN -amount_cents END), 0) AS living_cents,
+        COALESCE(SUM(CASE WHEN category = 'Investments' THEN amount_cents END), 0) AS invest_net_cents,
+        COALESCE(SUM(CASE WHEN category IN (${ENJOY_CATEGORIES_SQL}) THEN -amount_cents END), 0) AS enjoy_cents
+      FROM transactions
+      WHERE substr(date, 1, 4) = ?
+        AND category != 'Internal Transfer'
+        AND ${DOCUMENTATION_LINK_EXCLUSION_SQL}
+      GROUP BY month
+      ORDER BY month
+    `).all(year) as any[];
+
+    return res.json({
+      months: rows.map(r => {
+        // invest_cents = outflow only (money sent TO investments); reduces Saving below.
+        const investBar = r.invest_net_cents < 0 ? -r.invest_net_cents : 0;
+        const savingCents = computeSaving(r.income_cents, r.living_cents, r.enjoy_cents, investBar);
+        return {
+          month:         r.month,
+          income_cents:  r.income_cents,
+          living_cents:  r.living_cents,
+          invest_cents:  investBar,
+          enjoy_cents:   r.enjoy_cents,
+          saving_cents:  savingCents,
+        };
+      }),
+    });
+  });
+
+  // ===== GET /api/summary/cumulative-savings =====
+  // All months across all time; returns per-month net saving + running cumulative.
+  // net_saving = Income - net_living - net_enjoy - Investment outflow.
+  // living/enjoy use SUM(-amount_cents) so refunds/bonuses in expense categories
+  // naturally reduce the outflow (e.g. tax refunds, insurance bonuses, utility credits).
+  // Investment outflow (money sent TO investments) is treated like spend, reducing
+  // Saving; investment inflows (sell-trades, dividends) are excluded, never added back.
+  app.get('/api/summary/cumulative-savings', (_req: Request, res: Response) => {
+    const rows = db.prepare(`
+      SELECT
+        substr(date, 1, 7) AS month,
+        COALESCE(SUM(CASE WHEN amount_cents > 0 AND category = 'Income' THEN amount_cents END), 0)   AS income_cents,
+        COALESCE(SUM(CASE WHEN category IN (${LIVING_CATEGORIES_SQL}) THEN -amount_cents END), 0)    AS living_cents,
+        COALESCE(SUM(CASE WHEN category = 'Investments' THEN amount_cents END), 0)                   AS invest_net_cents,
+        COALESCE(SUM(CASE WHEN category IN (${ENJOY_CATEGORIES_SQL}) THEN -amount_cents END), 0)     AS enjoy_cents
+      FROM transactions
+      WHERE category != 'Internal Transfer'
+        AND ${DOCUMENTATION_LINK_EXCLUSION_SQL}
+      GROUP BY month
+      ORDER BY month
+    `).all() as any[];
+
+    let cumulative = 0;
+    const months = rows.map(r => {
+      const investOutflow = r.invest_net_cents < 0 ? -r.invest_net_cents : 0;
+      const net = computeSaving(r.income_cents, r.living_cents, r.enjoy_cents, investOutflow);
+      cumulative += net;
+      return {
+        month:            r.month,
+        income_cents:     r.income_cents,
+        living_cents:     r.living_cents,
+        invest_cents:     investOutflow,
+        enjoy_cents:      r.enjoy_cents,
+        net_saving_cents: net,
+        cumulative_cents: cumulative,
+      };
+    });
+
+    return res.json({ months });
+  });
+
+  // ===== GET /api/summary/net-worth =====
+  app.get('/api/summary/net-worth', (req: Request, res: Response) => {
+    // Get all distinct dates from balance_snapshots
+    const distinctDates = db
+      .prepare(`SELECT DISTINCT date FROM balance_snapshots ORDER BY date`)
+      .all() as any[];
+
+    const points: any[] = [];
+
+    for (const { date } of distinctDates) {
+      // For each account, get the most recent balance snapshot at or before this date
+      const snapshots = db
+        .prepare(
+          `SELECT account_id, balance_cents
+         FROM balance_snapshots
+         WHERE date <= ? AND id IN (
+           SELECT MAX(id) FROM balance_snapshots
+           WHERE account_id = account_id AND date <= ?
+           GROUP BY account_id
+         )
+         ORDER BY account_id`
+        )
+        .all(date, date) as any[];
+
+      // Build by_account map
+      const by_account: Record<number, number> = {};
+      let net_worth_cents = 0;
+
+      // More efficient approach: for each account, find its most recent snapshot at or before date
+      const accounts = db.prepare('SELECT id FROM accounts ORDER BY id').all() as any[];
+      for (const { id: account_id } of accounts) {
+        const snapshot = db
+          .prepare(
+            `SELECT balance_cents FROM balance_snapshots
+           WHERE account_id = ? AND date <= ?
+           ORDER BY date DESC
+           LIMIT 1`
+          )
+          .get(account_id, date) as any;
+
+        if (snapshot) {
+          by_account[account_id] = snapshot.balance_cents;
+          net_worth_cents += snapshot.balance_cents;
+        }
+      }
+
+      points.push({ date, net_worth_cents, by_account });
+    }
+
+    return res.json({ points });
+  });
+
+  // ===== GET /api/rules =====
+  app.get('/api/rules', (req: Request, res: Response) => {
+    const rules = db.prepare('SELECT * FROM category_rules ORDER BY priority ASC').all() as any[];
+    return res.json({ rules });
+  });

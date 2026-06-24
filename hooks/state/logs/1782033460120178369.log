@@ -1,0 +1,252 @@
+// Payslip import pipeline: parse (via the combined sniff dispatcher
+// `parsePayslip`) -> correction-precedence upsert into the `payslips` table.
+//
+// Mirrors `src/import/pipeline.ts`'s shape: a single-file `importPayslipFile`
+// (the per-file unit, analogous to `importStatement`) plus a directory-level
+// `importPayslipsFromDirectory` (analogous to `runFullImport`) that walks a
+// directory of real files. Both are exposed because the API route needs to
+// import one newly-uploaded file at a time, while the idempotency/e2e tests
+// (and any future "import everything in docs/payslip" CLI) need to process
+// a whole directory tree.
+
+import path from 'node:path';
+import { readdirSync, statSync } from 'node:fs';
+import type Database from 'better-sqlite3';
+import { parsePayslip } from '../parsers/payslip.js';
+import type { ParsedPayslip } from '../parsers/payslip-types.js';
+
+export interface PayslipImportSummary {
+  imported: number;
+  updated: number;
+  skipped: string[];
+  errors: string[];
+}
+
+interface ExistingPayslipRow {
+  id: number;
+  is_correction: number;
+  issue_date: string | null;
+}
+
+/** Looks up the existing `payslips` row for `(filerId, year, month)`, if any. */
+function findExisting(
+  db: Database.Database,
+  filerId: number,
+  year: number,
+  month: number
+): ExistingPayslipRow | undefined {
+  return db
+    .prepare(
+      `SELECT id, is_correction, issue_date FROM payslips WHERE filer_id = ? AND year = ? AND month = ?`
+    )
+    .get(filerId, year, month) as ExistingPayslipRow | undefined;
+}
+
+/**
+ * Decides whether `incoming` should replace `existing`, per the
+ * correction-precedence rules:
+ *   1. A non-correction always beats a correction, regardless of issue date.
+ *   2. Otherwise (both corrections, or both non-corrections), the later
+ *      `issue_date` wins (plain ISO string comparison).
+ *   3. Otherwise (a correction arriving after a non-correction already won,
+ *      or an equal/earlier issue date on the same correction-ness), the
+ *      incoming payslip is discarded.
+ *
+ * Returns `true` if `incoming` should win and overwrite `existing`.
+ */
+function incomingWins(existing: ExistingPayslipRow, incoming: ParsedPayslip): boolean {
+  const existingIsCorrection = existing.is_correction === 1;
+  const incomingIsCorrection = incoming.is_correction;
+
+  if (existingIsCorrection !== incomingIsCorrection) {
+    // A non-correction always wins over a correction, regardless of dates.
+    return !incomingIsCorrection;
+  }
+
+  // Same correction-ness: later issue_date wins. Treat a missing issue_date
+  // as never winning a tie against a present one, and a strictly later
+  // string-comparable ISO date as the deciding factor.
+  const existingDate = existing.issue_date ?? '';
+  const incomingDate = incoming.issue_date ?? '';
+  return incomingDate > existingDate;
+}
+
+/** Column names shared between insertPayslip() and updatePayslip(), so
+ * adding a new payslip column only needs one place to update. */
+const PAYSLIP_VALUE_COLUMNS = [
+  'tax_class', 'employer_name',
+  'gross_cents', 'income_tax_cents', 'church_tax_cents', 'solidarity_surcharge_cents',
+  'pension_cents', 'unemployment_cents', 'health_cents', 'care_cents',
+  'net_cents', 'payout_cents', 'is_correction', 'source_format', 'source_pdf',
+  'issue_date', 'raw_text',
+] as const;
+
+/** Inserts a brand-new `payslips` row for `filerId`. */
+function insertPayslip(db: Database.Database, filerId: number, p: ParsedPayslip): void {
+  const columns = PAYSLIP_VALUE_COLUMNS.join(', ');
+  const placeholders = PAYSLIP_VALUE_COLUMNS.map(() => '?').join(', ');
+  db.prepare(
+    `INSERT INTO payslips (
+      filer_id, year, month, ${columns}
+    ) VALUES (
+      ?, ?, ?, ${placeholders}
+    )`
+  ).run(
+    filerId,
+    p.year,
+    p.month,
+    p.tax_class,
+    p.employer_name,
+    p.gross_cents,
+    p.income_tax_cents,
+    p.church_tax_cents,
+    p.solidarity_surcharge_cents,
+    p.pension_cents,
+    p.unemployment_cents,
+    p.health_cents,
+    p.care_cents,
+    p.net_cents,
+    p.payout_cents,
+    p.is_correction ? 1 : 0,
+    p.source_format,
+    p.source_pdf,
+    p.issue_date,
+    p.raw_text
+  );
+}
+
+/** Overwrites an existing `payslips` row (same `id`) with `p`'s values. */
+function updatePayslip(db: Database.Database, id: number, p: ParsedPayslip): void {
+  const setClauses = PAYSLIP_VALUE_COLUMNS.map((col) => `${col} = ?`).join(', ');
+  db.prepare(
+    `UPDATE payslips SET ${setClauses} WHERE id = ?`
+  ).run(
+    p.tax_class,
+    p.employer_name,
+    p.gross_cents,
+    p.income_tax_cents,
+    p.church_tax_cents,
+    p.solidarity_surcharge_cents,
+    p.pension_cents,
+    p.unemployment_cents,
+    p.health_cents,
+    p.care_cents,
+    p.net_cents,
+    p.payout_cents,
+    p.is_correction ? 1 : 0,
+    p.source_format,
+    p.source_pdf,
+    p.issue_date,
+    p.raw_text,
+    id
+  );
+}
+
+/**
+ * Imports a single payslip PDF (`pdfPath`) for `filerId` into `db`.
+ *
+ * Parses via `parsePayslip` (sniffs DATEV vs Infoniqa vs skip cases), then
+ * for each resulting `ParsedPayslip` block applies the correction-precedence
+ * upsert against any existing `(filerId, year, month)` row:
+ *   - No existing row -> INSERT, counts as `imported`.
+ *   - Existing row, incoming wins -> UPDATE in place (same `id`), counts as
+ *     `updated`.
+ *   - Existing row, incoming does not win -> discarded silently, recorded
+ *     in `skipped` with a reason (not counted as an error).
+ *
+ * A document-level skip (e.g. Meldebescheinigung, or an unrecognized format)
+ * produces zero DB writes and is recorded in `skipped` too.
+ */
+export function importPayslipFile(
+  db: Database.Database,
+  filerId: number,
+  pdfPath: string
+): PayslipImportSummary {
+  const summary: PayslipImportSummary = { imported: 0, updated: 0, skipped: [], errors: [] };
+
+  let result;
+  try {
+    result = parsePayslip(pdfPath);
+  } catch (err) {
+    summary.errors.push(`${path.basename(pdfPath)}: ${String(err)}`);
+    return summary;
+  }
+
+  if (result.skipped_reason) {
+    summary.skipped.push(`${path.basename(pdfPath)}: ${result.skipped_reason}`);
+  }
+
+  for (const p of result.payslips) {
+    const existing = findExisting(db, filerId, p.year, p.month);
+
+    if (!existing) {
+      insertPayslip(db, filerId, p);
+      summary.imported++;
+      continue;
+    }
+
+    if (incomingWins(existing, p)) {
+      updatePayslip(db, existing.id, p);
+      summary.updated++;
+    } else {
+      summary.skipped.push(
+        `${p.source_pdf} ${p.year}-${String(p.month).padStart(2, '0')}: ` +
+          `discarded in favor of existing higher-precedence row ` +
+          `(existing is_correction=${existing.is_correction}, issue_date=${existing.issue_date}; ` +
+          `incoming is_correction=${p.is_correction}, issue_date=${p.issue_date})`
+      );
+    }
+  }
+
+  return summary;
+}
+
+/** Merges `b` into `a` in place (used to accumulate per-file summaries). */
+function mergeSummary(a: PayslipImportSummary, b: PayslipImportSummary): void {
+  a.imported += b.imported;
+  a.updated += b.updated;
+  a.skipped.push(...b.skipped);
+  a.errors.push(...b.errors);
+}
+
+/**
+ * Imports every `.pdf` file in `dirPath` (recursing into subdirectories,
+ * e.g. `docs/payslip/2024/`, `docs/payslip/2025/`, ...) for `filerId`,
+ * applying the same correction-precedence upsert as `importPayslipFile` for
+ * each file, and returns the aggregated summary.
+ *
+ * Files are processed in sorted path order for determinism; the
+ * correction-precedence logic itself does not depend on file processing
+ * order (it's keyed on `issue_date`/`is_correction` comparisons against
+ * whatever is currently stored), so re-running this (or running it with
+ * files in a different order) converges to the same final DB state.
+ */
+export function importPayslipsFromDirectory(
+  db: Database.Database,
+  filerId: number,
+  dirPath: string
+): PayslipImportSummary {
+  const summary: PayslipImportSummary = { imported: 0, updated: 0, skipped: [], errors: [] };
+
+  const pdfPaths = collectPdfPaths(dirPath).sort();
+  for (const pdfPath of pdfPaths) {
+    mergeSummary(summary, importPayslipFile(db, filerId, pdfPath));
+  }
+
+  return summary;
+}
+
+/** Recursively collects all `.pdf` file paths under `dirPath`. */
+function collectPdfPaths(dirPath: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dirPath)) {
+    const fullPath = path.join(dirPath, entry);
+    const stat = statSync(fullPath);
+    if (stat.isDirectory()) {
+      out.push(...collectPdfPaths(fullPath));
+    } else if (entry.toLowerCase().endsWith('.pdf')) {
+      out.push(fullPath);
+    }
+  }
+  return out;
+}

@@ -1,0 +1,215 @@
+##### post-tool-use-bash.sh #####
+#!/usr/bin/env bash
+# PostToolUse: Bash — 2.3 record failures + 1.2 verbose-output trimmer
+input=$(cat)
+export HOOK_INPUT="$input"
+source "$HOME/.claude/hooks/lib/common.sh"
+
+cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
+exit_code=$(printf '%s' "$input" | jq -r '.tool_response.exit_code // 0' 2>/dev/null)
+output=$(printf '%s' "$input" | jq -r '.tool_response.stdout // empty' 2>/dev/null)
+
+# 2.3 — record failures (always, before any blocking decision below)
+if [ -n "$cmd" ] && [ "$exit_code" != "0" ] && [ "$exit_code" != "null" ]; then
+  sig=$(printf '%s' "$cmd" | md5sum | cut -d' ' -f1)
+  first_err=$(printf '%s' "$output" | grep -iE "error|fail" | head -1)
+  printf '%s (exit %s) — %s\n' "$cmd" "$exit_code" "$first_err" >> "$state_dir/failed_${sig}" 2>/dev/null
+  log "bash-post: recorded failure for command (exit $exit_code)"
+fi
+
+# 1.2 — verbose output trimmer
+lines=$(printf '%s\n' "$output" | wc -l)
+if [ "$lines" -gt 200 ]; then
+  log_dir="$HOOKS_HOME/state/logs"
+  mkdir -p "$log_dir" 2>/dev/null
+  log_file="$log_dir/$(date +%s%N).log"
+  printf '%s\n' "$output" > "$log_file" 2>/dev/null
+  summary=$(printf '%s\n' "$output" | grep -iE "error|fail|warn" | head -40)
+  log "bash-post: trimmed ${lines}-line output, saved to $log_file"
+  printf 'Output was %s lines; full log saved to %s.\nFiltered errors/warnings below:\n%s\n' "$lines" "$log_file" "$summary" >&2
+  exit 2
+fi
+
+exit 0
+
+##### post-tool-use-read-trim.sh #####
+#!/usr/bin/env bash
+# PostToolUse: Read — backstop truncation. pre-tool-use-read-cache.sh's 1.5 nudge
+# only fires once per file per session; if it's ignored on a retry, this catches
+# the large read after the fact instead of letting the full content into context.
+input=$(cat)
+export HOOK_INPUT="$input"
+source "$HOME/.claude/hooks/lib/common.sh"
+
+resp=$(printf '%s' "$input" | jq -c '.tool_response // empty' 2>/dev/null)
+[ -z "$resp" ] && exit 0
+
+text=$(printf '%s' "$resp" | jq -r '.. | strings' 2>/dev/null)
+[ -z "$text" ] && exit 0
+
+lines=$(printf '%s\n' "$text" | wc -l)
+if [ "$lines" -gt 1500 ]; then
+  log_dir="$HOOKS_HOME/state/logs"
+  mkdir -p "$log_dir" 2>/dev/null
+  log_file="$log_dir/$(date +%s%N).log"
+  printf '%s\n' "$text" > "$log_file" 2>/dev/null
+  head_part=$(printf '%s\n' "$text" | head -80)
+  tail_part=$(printf '%s\n' "$text" | tail -40)
+  log "read-trim: backstop-truncated ${lines}-line read, saved to $log_file"
+  printf 'This read returned %s lines and was not bounded by offset/limit. Full content saved to %s.\nFirst 80 lines:\n%s\n...\nLast 40 lines:\n%s\n' "$lines" "$log_file" "$head_part" "$tail_part" >&2
+  exit 2
+fi
+
+exit 0
+
+##### post-tool-use-search-trim.sh #####
+#!/usr/bin/env bash
+# PostToolUse: Grep|Glob — verbose-result trimmer (analogue of the Bash 1.2 trimmer,
+# but field-name-agnostic since Grep/Glob tool_response shape isn't documented:
+# we pull every string leaf out of tool_response with `jq '.. | strings'` instead
+# of assuming a specific key) + one-shot nudge toward the Explore subagent for
+# sessions doing a lot of broad searching in the main thread.
+input=$(cat)
+export HOOK_INPUT="$input"
+source "$HOME/.claude/hooks/lib/common.sh"
+
+resp=$(printf '%s' "$input" | jq -c '.tool_response // empty' 2>/dev/null)
+[ -z "$resp" ] && exit 0
+
+text=$(printf '%s' "$resp" | jq -r '.. | strings' 2>/dev/null)
+
+if [ -n "$text" ]; then
+  lines=$(printf '%s\n' "$text" | wc -l)
+  if [ "$lines" -gt 200 ]; then
+    log_dir="$HOOKS_HOME/state/logs"
+    mkdir -p "$log_dir" 2>/dev/null
+    log_file="$log_dir/$(date +%s%N).log"
+    printf '%s\n' "$text" > "$log_file" 2>/dev/null
+    head_part=$(printf '%s\n' "$text" | head -60)
+    log "search-trim: trimmed ${lines}-line $tool_name result, saved to $log_file"
+    printf 'Result was %s lines; full output saved to %s.\nFirst 60 lines:\n%s\n' "$lines" "$log_file" "$head_part" >&2
+    exit 2
+  fi
+fi
+
+# One-shot nudge: many search calls in one session without delegating to Explore.
+streak_file="$state_dir/search_call_count"
+nudged_file="$state_dir/search_nudge_sent"
+count=$(( $(cat "$streak_file" 2>/dev/null || echo 0) + 1 ))
+printf '%s' "$count" > "$streak_file" 2>/dev/null
+
+if [ "$count" -ge 8 ] && [ ! -f "$nudged_file" ]; then
+  touch "$nudged_file" 2>/dev/null
+  log "search-trim: nudge sent after $count search calls this session"
+  jq -n '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: "This session has made several Grep/Glob calls in the main thread. For broad, open-ended exploration (more than a couple of targeted lookups), consider delegating to the Explore subagent instead — it keeps the raw search results out of this context."}}'
+fi
+
+exit 0
+
+##### pre-tool-use-read-cache.sh #####
+#!/usr/bin/env bash
+# PreToolUse: Read — 1.1 duplicate-read cache + 1.5 read-before-grep nudge
+input=$(cat)
+export HOOK_INPUT="$input"
+source "$HOME/.claude/hooks/lib/common.sh"
+
+file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
+[ -z "$file" ] && exit 0
+[ ! -f "$file" ] && exit 0
+
+# 1.1 — duplicate-read cache
+cache_key=$(printf '%s' "$file" | md5sum | cut -d' ' -f1)
+cache_file="$state_dir/read_${cache_key}"
+current_hash=$(md5sum "$file" 2>/dev/null | cut -d' ' -f1)
+
+if [ -n "$current_hash" ] && [ -f "$cache_file" ] && [ "$(cat "$cache_file" 2>/dev/null)" = "$current_hash" ]; then
+  log "read-cache: blocked re-read of $file (unchanged)"
+  echo "File '$file' was already read in this session and is unchanged since. Re-use what you already saw instead of reading it again; only re-read if you specifically need to re-verify content after an edit you're unsure about." >&2
+  exit 2
+fi
+[ -n "$current_hash" ] && echo "$current_hash" > "$cache_file" 2>/dev/null
+
+# 1.5 — read-before-grep nudge (only once per file per session)
+nudge_file="$state_dir/nudged_${cache_key}"
+if [ ! -f "$nudge_file" ]; then
+  size=$(wc -l < "$file" 2>/dev/null || echo 0)
+  has_range=$(printf '%s' "$input" | jq -r '.tool_input.offset // .tool_input.limit // empty' 2>/dev/null)
+  if [ "$size" -gt 1500 ] && [ -z "$has_range" ]; then
+    touch "$nudge_file" 2>/dev/null
+    log "read-nudge: $file has $size lines, no offset/limit"
+    echo "File has ${size} lines and no offset/limit was given. Consider Grep-ing for the relevant symbol first, or reading a specific range." >&2
+    exit 2
+  fi
+fi
+
+exit 0
+
+##### session-start.sh #####
+#!/usr/bin/env bash
+# SessionStart — 1.3 session/project digest, keyed by cwd since there's no single user-level CLAUDE.md
+input=$(cat)
+export HOOK_INPUT="$input"
+source "$HOME/.claude/hooks/lib/common.sh"
+
+proj_cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+[ -z "$proj_cwd" ] && proj_cwd="$PWD"
+
+digest_dir="$HOOKS_HOME/state/digests"
+mkdir -p "$digest_dir" 2>/dev/null
+key=$(printf '%s' "$proj_cwd" | md5sum | cut -d' ' -f1)
+digest="$digest_dir/${key}.md"
+claude_md="$proj_cwd/CLAUDE.md"
+
+needs_regen=0
+if [ ! -f "$digest" ]; then
+  needs_regen=1
+elif [ -f "$claude_md" ] && [ "$claude_md" -nt "$digest" ]; then
+  needs_regen=1
+elif [ ! -f "$claude_md" ]; then
+  age=$(( $(date +%s) - $(stat -c %Y "$digest" 2>/dev/null || echo 0) ))
+  [ "$age" -gt 86400 ] && needs_regen=1
+fi
+
+if [ "$needs_regen" = "1" ]; then
+  {
+    echo "## Project digest for: $proj_cwd"
+    if [ -f "$claude_md" ]; then
+      echo "### CLAUDE.md (first 15 lines)"
+      head -15 "$claude_md"
+    fi
+    if [ -f "$proj_cwd/package.json" ]; then
+      echo "### package.json scripts"
+      jq -r '.name as $n | "name: \($n)", (.scripts // {} | to_entries[] | "  \(.key): \(.value)")' "$proj_cwd/package.json" 2>/dev/null
+    fi
+    echo "### Top-level entries"
+    ls -1 "$proj_cwd" 2>/dev/null | head -20
+  } > "$digest" 2>/dev/null
+  log "session-start: regenerated digest for $proj_cwd"
+fi
+
+cat "$digest" 2>/dev/null
+exit 0
+
+##### session-end-cleanup.sh #####
+#!/usr/bin/env bash
+# SessionEnd — prune stale state to bound growth of hooks/state/
+find "$HOME/.claude/hooks/state" -maxdepth 1 -type d -mtime +7 ! -name state ! -name digests ! -name logs -exec rm -rf {} + 2>/dev/null
+find "$HOME/.claude/hooks/state/logs" -maxdepth 1 -type f -mtime +7 -delete 2>/dev/null
+find "$HOME/.claude/hooks/state/digests" -maxdepth 1 -type f -mtime +30 -delete 2>/dev/null
+exit 0
+
+##### pre-compact.sh #####
+#!/usr/bin/env bash
+# PreCompact — 1.4 snapshot file paths touched via Edit/Write, from the transcript
+input=$(cat)
+export HOOK_INPUT="$input"
+source "$HOME/.claude/hooks/lib/common.sh"
+
+transcript=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
+out="$HOOKS_HOME/state/pre-compact-$(date +%s).json"
+if [ -n "$transcript" ] && [ -f "$transcript" ]; then
+  jq -c 'select(.message.content[]?.input.file_path? != null) | .message.content[].input.file_path' \
+    "$transcript" 2>/dev/null | sort -u > "$out" 2>/dev/null
+  log "pre-compact: snapshot written to $out"
+fi
+exit 0

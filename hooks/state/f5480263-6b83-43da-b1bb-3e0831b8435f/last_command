@@ -1,0 +1,1 @@
+git diff -- frontend/src/components/IncomeTaxDashboard.tsx | head -50; echo "---status---"; git status --short -- frontend/src/components/IncomeTaxDashboard.tsx backend-dotnet/src/FinanceAnalyser.Import/TaxCalculator.cs

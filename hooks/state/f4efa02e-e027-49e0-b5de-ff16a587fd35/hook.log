@@ -1,0 +1,4 @@
+[20:59:50] read-cache: blocked re-read of /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Import/TaxCalculator.cs (unchanged)
+[20:59:50] read-cache: blocked re-read of /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Core/Tax/TaxConstants.cs (unchanged)
+[20:59:55] bash-post: trimmed 484-line output, saved to /home/mohan/.claude/hooks/state/logs/1782241195944240792.log
+[20:59:56] bash-post: trimmed 296-line output, saved to /home/mohan/.claude/hooks/state/logs/1782241196147243435.log

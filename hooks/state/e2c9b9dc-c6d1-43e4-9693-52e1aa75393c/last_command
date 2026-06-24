@@ -1,0 +1,3 @@
+cd /home/mohan/REPO/finance-analyser && git status --short backend-dotnet docker-compose.yml frontend/Dockerfile frontend/nginx.conf docs/dotnet-migration-plan.md 2>&1 | head -5
+echo "..."
+git status --short backend-dotnet | wc -l

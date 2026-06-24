@@ -1,0 +1,11 @@
+{
+  "rules": [
+    { "glob": "**/Domain/**/*.cs",         "hint": "Domain layer: no references to Infrastructure, EF Core, or any framework package — pure C# entities, value objects, domain events only." },
+    { "glob": "**/Application/**/*.cs",    "hint": "Application layer: define interfaces (ports) here; Infrastructure implements them. Prefer CQRS/MediatR handlers over fat service classes." },
+    { "glob": "**/Infrastructure/**/*.cs", "hint": "Infrastructure layer: implement Application interfaces. Use Repository/UnitOfWork for persistence; keep DbContext usage out of Domain/Application." },
+    { "glob": "**/Controllers/**/*.cs",    "hint": "Controllers: thin — map request to a Mediator command/query and return the result; no business logic inline." },
+    { "glob": "**/components/**/*.tsx",    "hint": "React component: presentation only — no direct API/data-layer calls or business rules; consume a hook or service for that." },
+    { "glob": "**/services/**/*.ts",       "hint": "Service layer: depend on interfaces/ports, not concrete implementations, so it stays testable and swappable (dependency inversion)." },
+    { "glob": "**/*.ts",                   "hint": "Prefer composition over inheritance; keep modules single-purpose (SRP) and depend on abstractions at module boundaries." }
+  ]
+}

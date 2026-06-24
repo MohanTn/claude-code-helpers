@@ -1,0 +1,1 @@
+cd /home/mohan/REPO/finance-analyser && git status --short frontend/src/components/income-tax/ElsterGuideDialog.tsx frontend/src/components/IncomeTaxDashboard.tsx frontend/src/index.css

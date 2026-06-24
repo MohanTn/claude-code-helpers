@@ -1,0 +1,26 @@
+python3 -c "
+import sqlite3
+con = sqlite3.connect('./data/finance.db')
+cur = con.cursor()
+print('--- HALLESCHE transactions 2025 ---')
+for row in cur.execute(\"SELECT date, description, amount_cents, category FROM transactions WHERE description LIKE '%HALLESCHE%' AND date >= '2025-01-01' AND date < '2026-01-01' ORDER BY date\"):
+    print(row)
+print('--- health_insurance_certificates ---')
+try:
+    for row in cur.execute('SELECT * FROM health_insurance_certificates'):
+        print(row)
+except Exception as e:
+    print('ERR', e)
+print('--- tax_filers ---')
+for row in cur.execute('SELECT * FROM tax_filers'):
+    print(row)
+print('--- tax_filing_settings ---')
+for row in cur.execute('SELECT * FROM tax_filing_settings'):
+    print(row)
+print('--- werbungskosten_itemized ---')
+try:
+    for row in cur.execute('SELECT * FROM werbungskosten_itemized'):
+        print(row)
+except Exception as e:
+    print('ERR', e)
+"

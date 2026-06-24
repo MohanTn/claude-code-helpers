@@ -1,0 +1,419 @@
+     1	namespace FinanceAnalyser.Core.Models;
+     2	
+     3	/// <summary>A single normalized transaction extracted from a statement PDF. Ported from src/parsers/types.ts.</summary>
+     4	public record ParsedTransaction(
+     5	    string Date,
+     6	    string Description,
+     7	    long AmountCents,
+     8	    string Currency,
+     9	    string RawText,
+    10	    string SourcePdf);
+    11	
+    12	/// <summary>A balance snapshot derived from a statement's printed closing balance.</summary>
+    13	public record BalanceSnapshot(string Date, long BalanceCents);
+    14	
+    15	/// <summary>Result of parsing a single statement PDF.</summary>
+    16	public record ParseResult(List<ParsedTransaction> Transactions, BalanceSnapshot? BalanceSnapshot);
+    17	
+    18	/// <summary>A categorization rule, matching the category_rules table schema. Ported from src/rules/types.ts.</summary>
+    19	public record CategoryRule(
+    20	    int? Id,
+    21	    int Priority,
+    22	    string MatchField,
+    23	    string MatchType,
+    24	    string? MatchPattern,
+    25	    string TargetCategory);
+    26	
+    27	/// <summary>A transaction after the rule engine has assigned a category.</summary>
+    28	public record CategorizedTransaction(
+    29	    string Date,
+    30	    string Description,
+    31	    long AmountCents,
+    32	    string Currency,
+    33	    string RawText,
+    34	    string SourcePdf,
+    35	    string Category) : ParsedTransaction(Date, Description, AmountCents, Currency, RawText, SourcePdf);
+    36	
+    37	/// <summary>A categorized transaction tagged with the account it was imported from. Ported from internal-transfer-matcher.ts.</summary>
+    38	public record AccountTaggedTransaction(
+    39	    string Date,
+    40	    string Description,
+    41	    long AmountCents,
+    42	    string Currency,
+    43	    string RawText,
+    44	    string SourcePdf,
+    45	    string Category,
+    46	    long AccountId) : CategorizedTransaction(Date, Description, AmountCents, Currency, RawText, SourcePdf, Category);
+---PAYSLIPS---
+     1	namespace FinanceAnalyser.Core.Models;
+     2	
+     3	/// <summary>A single normalized payslip extracted from a payslip PDF. Ported from src/parsers/payslip-types.ts.</summary>
+     4	public record ParsedPayslip(
+     5	    int Year,
+     6	    int Month,
+     7	    string? TaxClass,
+     8	    string? EmployerName,
+     9	    long GrossCents,
+    10	    long IncomeTaxCents,
+    11	    long ChurchTaxCents,
+    12	    long SolidaritySurchargeCents,
+    13	    long PensionCents,
+    14	    long UnemploymentCents,
+    15	    long HealthCents,
+    16	    long CareCents,
+    17	    long NetCents,
+    18	    long PayoutCents,
+    19	    bool IsCorrection,
+    20	    string SourceFormat,
+    21	    string SourcePdf,
+    22	    string? IssueDate,
+    23	    string RawText);
+    24	
+    25	/// <summary>Result of parsing a single payslip PDF.</summary>
+    26	public record PayslipParseResult(List<ParsedPayslip> Payslips, string? SkippedReason);
+---SEEDRULES---
+     1	using FinanceAnalyser.Core.Models;
+     2	
+     3	namespace FinanceAnalyser.Core.Rules;
+     4	
+     5	/// <summary>
+     6	/// Seed categorization rules. Ported verbatim from src/rules/seed-rules.ts.
+     7	///
+     8	/// Rules are evaluated in ascending Priority order, first match wins.
+     9	/// Priority bands (gaps left intentionally for future insertion):
+    10	///   10-99   Internal Transfer detection (HIGHEST priority — must win over
+    11	///           generic merchant rules, e.g. a Trade Republic "Handel" sell-trade
+    12	///           transfer must not be caught by an Investments keyword rule first).
+    13	///   100-799 Category-specific merchant/keyword rules.
+    14	///   999     Terminal default -> Other.
+    15	///
+    16	/// 'contains' patterns are matched case-insensitively against Description.
+    17	/// 'regex' patterns are compiled with case-insensitive matching.
+    18	/// </summary>
+    19	public static class SeedRules
+    20	{
+    21	    public static readonly List<CategoryRule> All = new()
+    22	    {
+    23	        // ===========================================================================
+    24	        // 10-99: Internal Transfer detection (PRD Section 4 M3 confirmed pairs)
+    25	        // ===========================================================================
+    26	
+    27	        // Commerzbank <-> Wise (Mohan's own Wise account, "Mohan Wise TRWIBEB1XXX ...")
+    28	        new CategoryRule(null, 10, "description", "regex", "mohan wise", "Internal Transfer"),
+    29	
+    30	        // Commerzbank <-> Trade Republic (Mohan's own Trade Republic account)
+    31	        new CategoryRule(null, 11, "description", "regex", "traderepublic mohan", "Internal Transfer"),
+    32	
+    33	        // Commerzbank <-> TF Bank credit card repayments
+    34	        new CategoryRule(null, 12, "description", "regex", "tf bank (credit card|ab)", "Internal Transfer"),
+    35	
+    36	        // Commerzbank: Mohan sending money from Wise back to Commerzbank
+    37	        new CategoryRule(null, 13, "description", "regex", "mohan talkad nagaraju moving money to commerzbank", "Internal Transfer"),
+    38	
+    39	        // Commerzbank: bare self-transfer with no other distinguishing transfer keyword
+    40	        // (e.g. "Mohan Talkad Nagaraju End-To-End Reference: 2885fddced...")
+    41	        new CategoryRule(null, 14, "description", "regex", "^mohan talkad nagaraju end-to-end", "Internal Transfer"),
+    42	
+    43	        // Wise: incoming top-ups / transfers from Mohan's own Commerzbank account
+    44	        new CategoryRule(null, 15, "description", "regex", "received money from mohan talkad nagaraju", "Internal Transfer"),
+    45	
+    46	        // Wise: outgoing transfers to Mohan's own Commerzbank account
+    47	        new CategoryRule(null, 16, "description", "regex", "sent money to mohan talkad nagaraju", "Internal Transfer"),
+    48	
+    49	        // Wise: Mohan paying his own TF Bank credit card
+    50	        new CategoryRule(null, 17, "description", "regex", "sent money to tf bank credit card", "Internal Transfer"),
+    51	
+    52	        // Wise: account top-ups (funding from Mohan's own Commerzbank account)
+    53	        new CategoryRule(null, 18, "description", "regex", "topped up account", "Internal Transfer"),
+    54	
+    55	        // Wise: currency conversion of Mohan's own balance (still his own money, just FX)
+    56	        new CategoryRule(null, 19, "description", "regex", "converted .* eur to .* (inr|usd)", "Internal Transfer"),
+    57	
+    58	        // Trade Republic: outgoing transfers to Mohan's own accounts
+    59	        new CategoryRule(null, 20, "description", "regex", "überweisung outgoing transfer for mohan talkad nagaraju", "Internal Transfer"),
+    60	
+    61	        // Trade Republic: incoming transfers from Mohan's own accounts
+    62	        new CategoryRule(null, 21, "description", "regex", "überweisung incoming transfer from mohan talkad nagaraju", "Internal Transfer"),
+    63	
+    64	        // TF Bank: credit card repayments funded from Wise ("Bezahlung Zahlung ...")
+    65	        new CategoryRule(null, 22, "description", "regex", "bezahlung zahlung", "Internal Transfer"),
+    66	
+    67	        // ===========================================================================
+    68	        // 100-199: Income
+    69	        // ===========================================================================
+    70	
+    71	        // Salary (Commerzbank: "LOHN / GEHALT", "Lohn/Gehalt")
+    72	        new CategoryRule(null, 100, "description", "regex", @"lohn\s*/\s*gehalt", "Income"),
+    73	
+    74	        // DUNNHUMBY small recurring credits (employer entity reimbursements)
+    75	        new CategoryRule(null, 101, "description", "contains", "DUNNHUMBY", "Income"),
+    76	
+    77	        // CHECK24 cashback
+    78	        new CategoryRule(null, 102, "description", "contains", "CHECK24", "Income"),
+    79	
+    80	        // Incoming PayPal instant transfer (Commerzbank)
+    81	        new CategoryRule(null, 103, "description", "regex", "paypal instant transfer", "Income"),
+    82	
+    83	        // Wise card cashback rewards
+    84	        new CategoryRule(null, 104, "description", "regex", "balance_cashback", "Income"),
+    85	
+    86	        // ===========================================================================
+    87	        // 105-109: Property acquisition (higher than Rent/Housing so purchase-contract
+    88	        //          payments beat generic "Poppe Immobilien" rule at 112)
+    89	        // ===========================================================================
+    90	
+    91	        // Purchase contract / notary fees — "Kaufvertrag" in description
+    92	        new CategoryRule(null, 105, "description", "contains", "Kaufvertrag", "Investments"),
+    93	
+    94	        // Property purchase price instalments — "Restkaufpreis" or "UVZ-Nr"
+    95	        // (UVZ = Urkundenverzeichnisnummer, the German notarial deed reference)
+    96	        new CategoryRule(null, 106, "description", "regex", @"restkaufpreis|uvz-nr\.", "Investments"),
+    97	
+    98	        // Mortgage loan-service charges and interest (Commerzbank direct-debit):
+    99	        // "Rechnung Darl.-Leistung … Zinsen" and similar
+   100	        new CategoryRule(null, 107, "description", "regex", @"darl\.?-?leistung|darlehenspreis|sicherheitentausch", "Investments"),
+   101	
+   102	        // ===========================================================================
+   103	        // 110-199: Rent/Housing
+   104	        // ===========================================================================
+   105	
+   106	        // Rent payments (Commerzbank: "Leda GmbH ... wohnunh/wohnung miete ...")
+   107	        new CategoryRule(null, 110, "description", "regex", "leda gmbh.*wohnun", "Rent/Housing"),
+   108	
+   109	        // degewo housing-related refund
+   110	        new CategoryRule(null, 111, "description", "contains", "degewo", "Rent/Housing"),
+   111	
+   112	        // Property management (ongoing fees — Kaufvertrag overridden at priority 108 below)
+   113	        new CategoryRule(null, 112, "description", "contains", "Poppe Immobilien", "Rent/Housing"),
+   114	
+   115	        // ===========================================================================
+   116	        // 120-199: Utilities
+   117	        // ===========================================================================
+   118	
+   119	        // Electricity (SWK Energie - Strom)
+   120	        new CategoryRule(null, 120, "description", "contains", "SWK ENERGIE", "Utilities"),
+   121	
+   122	        // Gas / electricity refunds (Vattenfall)
+   123	        new CategoryRule(null, 121, "description", "contains", "VATTENFALL", "Utilities"),
+   124	
+   125	        // Internet/cable (PYUR)
+   126	        new CategoryRule(null, 122, "description", "contains", "PYUR", "Utilities"),
+   127	
+   128	        // Public broadcasting fee (Rundfunk ARD, ZDF, DRadio)
+   129	        new CategoryRule(null, 123, "description", "contains", "Rundfunk", "Utilities"),
+   130	
+   131	        // ===========================================================================
+   132	        // 130-199: Insurance
+   133	        // ===========================================================================
+   134	
+   135	        // Hallesche health insurance (premium and bonus payments)
+   136	        new CategoryRule(null, 130, "description", "contains", "HALLESCHE", "Insurance"),
+   137	
+   138	        // Bayern-Versicherung life insurance
+   139	        new CategoryRule(null, 131, "description", "contains", "Bayern-Versicherung", "Insurance"),
+   140	
+   141	        // Neodigital Versicherung (Wise)
+   142	        new CategoryRule(null, 132, "description", "contains", "Neodigital Versicherung", "Insurance"),
+   143	
+   144	        // ===========================================================================
+   145	        // 140-199: Fitness/Health
+   146	        // ===========================================================================
+   147	
+   148	        // Gym membership (East Bank Club / The Fitness Factory)
+   149	        new CategoryRule(null, 140, "description", "regex", "east bank club|fitness factory", "Fitness/Health"),
+   150	
+   151	        // Medical billing service
+   152	        new CategoryRule(null, 141, "description", "contains", "PVS BERLIN-BRANDENBURG", "Fitness/Health"),
+   153	
+   154	        // Drugstore / pharmacy (TF Bank)
+   155	        new CategoryRule(null, 142, "description", "regex", "dm[ -]drogerie markt|friedrich apotheke", "Fitness/Health"),
+   156	
+   157	        // Zumba fitness class
+   158	        new CategoryRule(null, 143, "description", "contains", "ZUMBA FITNESS", "Fitness/Health"),
+   159	
+   160	        // ===========================================================================
+   161	        // 150-199: Subscriptions
+   162	        // ===========================================================================
+   163	
+   164	        // Mobile phone (Telefonica)
+   165	        new CategoryRule(null, 150, "description", "contains", "Telefonica Germany", "Subscriptions"),
+   166	
+   167	        // Language school (recurring course fee)
+   168	        new CategoryRule(null, 151, "description", "contains", "Europa Spracheninstitut", "Subscriptions"),
+   169	
+   170	        // Lebara mobile/SIM topup (via PayPal/Riverty)
+   171	        new CategoryRule(null, 152, "description", "contains", "Lebara", "Subscriptions"),
+   172	
+   173	        // Amazon Prime subscription (Wise card transactions)
+   174	        new CategoryRule(null, 153, "description", "regex", "amazon prim|amznprime", "Subscriptions"),
+   175	
+   176	        // Google One cloud storage
+   177	        new CategoryRule(null, 154, "description", "contains", "Google One", "Subscriptions"),
+   178	
+   179	        // CyberGhost VPN
+   180	        new CategoryRule(null, 155, "description", "contains", "CyberGhost VPN", "Subscriptions"),
+   181	
+   182	        // OpenRouter AI dev tool subscription
+   183	        new CategoryRule(null, 156, "description", "contains", "Openrouter", "Subscriptions"),
+   184	
+   185	        // ===========================================================================
+   186	        // 160-199: Transport
+   187	        // ===========================================================================
+   188	
+   189	        // BVG public transport (via PayPal/Riverty, and direct BVG charges)
+   190	        new CategoryRule(null, 160, "description", "regex", "riverty.*bvg|bvg holzmarktstr", "Transport"),
+   191	
+   192	        // PayPal/Riverty general (BVG subscription paid via Riverty, no merchant suffix)
+   193	        // Covers "Riverty GmbH" (Commerzbank) and "Rivertygmbh" (Wise card transactions).
+   194	        new CategoryRule(null, 161, "description", "regex", @"riverty\s*gmbh", "Transport"),
+   195	
+   196	        // FlixBus
+   197	        new CategoryRule(null, 162, "description", "regex", "flix se|flixbus", "Transport"),
+   198	
+   199	        // DB (Deutsche Bahn) ticket machines / stations
+   200	        new CategoryRule(null, 163, "description", "regex", "db automaten|berlin hbf|dusseldorf bh", "Transport"),
+   201	
+   202	        // Ferry / parking near Potsdam (Pfaueninsel trip)
+   203	        new CategoryRule(null, 164, "description", "regex", "parken rathen|spsg", "Transport"),
+   204	
+   205	        // Amsterdam airport train station
+   206	        new CategoryRule(null, 165, "description", "contains", "Ns Amsterdam Sloterdij", "Transport"),
+   207	
+   208	        // ===========================================================================
+   209	        // 170-199: Dining
+   210	        // ===========================================================================
+   211	
+   212	        new CategoryRule(null, 170, "description", "regex",
+   213	            @"dean&david|zettle_\*|sumup \*|ah to go|croissant couture|grillhaus doner burge|manneken pis|asia laden|maoz damrak|s2k food store|floating amsterdam|vegan|to 1980 gbr|byzantio konditorei|ammamma",
+   214	            "Dining"),
+   215	
+   216	        // ===========================================================================
+   217	        // 180-249: Shopping
+   218	        // ===========================================================================
+   219	
+   220	        new CategoryRule(null, 180, "description", "regex",
+   221	            @"amazon\*|www\.amazon\.|aliexpress|temu\.com|myprotein|h&m|\bzara\b|\bmango\b|stradivarius|woolworth|decathlon|hema |eu\.store\.bambulab\.com|vivenu gmbh|media markt|modulor gmbh|arma trade gmbh|e-reichelt",
+   222	            "Shopping"),
+   223	
+   224	        // ===========================================================================
+   225	        // 200-249: Travel
+   226	        // ===========================================================================
+   227	
+   228	        new CategoryRule(null, 200, "description", "regex",
+   229	            @"yosepower|ccv\*de hoop|kooyman souvenirs|stichting eye filmmuse|hugendubel|b&b hotels germany|citytriphostels|berghotel basteistrasse|schum euroshop|flugladen|bb\d* - bb de altkoenigstrasse|zaanse schans",
+   230	            "Travel"),
+   231	
+   232	        // Trip.com booking (via PayPal)
+   233	        new CategoryRule(null, 201, "description", "contains", "Trip.com", "Travel"),
+   234	
+   235	        // ===========================================================================
+   236	        // 250-299: Investments
+   237	        // ===========================================================================
+   238	
+   239	        // Interactive Brokers transfers (brokerage funding)
+   240	        new CategoryRule(null, 250, "description", "contains", "Interactive Brokers", "Investments"),
+   241	
+   242	        // PLUS500 trading platform
+   243	        new CategoryRule(null, 251, "description", "contains", "PLUS500", "Investments"),
+   244	
+   245	        // Trade Republic interest, trades, and dividends (account-internal activity)
+   246	        new CategoryRule(null, 252, "description", "regex", @"zinsen (your )?interest payment|^handel |^ertrag ", "Investments"),
+   247	
+   248	        // ===========================================================================
+   249	        // 300-349: Groceries
+   250	        // ===========================================================================
+   251	
+   252	        new CategoryRule(null, 300, "description", "regex",
+   253	            @"lidl|edeka|rewe|aldi nord|kaufland|netto marken-discount|\bpenny\b|denns biomarkt|zora supermarkt|spatkauf|box 80 gmbh",
+   254	            "Groceries"),
+   255	
+   256	        // ===========================================================================
+   257	        // 350-399: Fees/Taxes
+   258	        // ===========================================================================
+   259	
+   260	        // Tax refund (Finanzamt)
+   261	        new CategoryRule(null, 350, "description", "contains", "Finanzamt", "Fees/Taxes"),
+   262	
+   263	        // Government refund (Bundeskasse)
+   264	        new CategoryRule(null, 351, "description", "contains", "Bundeskasse", "Fees/Taxes"),
+   265	
+   266	        // Legal fees
+   267	        new CategoryRule(null, 352, "description", "contains", "RAe Hildebrandt", "Fees/Taxes"),
+   268	
+   269	        // Court/legal fee (Kosteneinziehungsstelle der Justiz)
+   270	        new CategoryRule(null, 353, "description", "contains", "Kosteneinziehungsstelle", "Fees/Taxes"),
+   271	
+   272	        // Immigration office fee
+   273	        new CategoryRule(null, 354, "description", "contains", "Landesamt f. Einwander", "Fees/Taxes"),
+   274	
+   275	        // Trade Republic tax optimisation adjustments
+   276	        new CategoryRule(null, 355, "description", "regex", "^steuern tax optimisation", "Fees/Taxes"),
+   277	
+   278	        // TF Bank credit card interest charge
+   279	        new CategoryRule(null, 356, "description", "regex", "zinsen f[üu]r einen genutzten kredit", "Fees/Taxes"),
+   280	
+   281	        // ===========================================================================
+   282	        // 999: Terminal fallback
+   283	        // ===========================================================================
+   284	
+   285	        new CategoryRule(null, 999, "description", "default", null, "Other"),
+   286	    };
+   287	}
+---DATA.CSPROJ---
+     1	﻿<Project Sdk="Microsoft.NET.Sdk">
+     2	
+     3	  <ItemGroup>
+     4	    <ProjectReference Include="..\FinanceAnalyser.Core\FinanceAnalyser.Core.csproj" />
+     5	  </ItemGroup>
+     6	
+     7	  <ItemGroup>
+     8	    <PackageReference Include="Dapper" Version="2.1.79" />
+     9	    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    10	  </ItemGroup>
+    11	
+    12	  <PropertyGroup>
+    13	    <TargetFramework>net8.0</TargetFramework>
+    14	    <ImplicitUsings>enable</ImplicitUsings>
+    15	    <Nullable>enable</Nullable>
+    16	  </PropertyGroup>
+    17	
+    18	</Project>
+---DATA.TESTS.CSPROJ---
+     1	<Project Sdk="Microsoft.NET.Sdk">
+     2	
+     3	  <PropertyGroup>
+     4	    <TargetFramework>net8.0</TargetFramework>
+     5	    <ImplicitUsings>enable</ImplicitUsings>
+     6	    <Nullable>enable</Nullable>
+     7	
+     8	    <IsPackable>false</IsPackable>
+     9	    <IsTestProject>true</IsTestProject>
+    10	  </PropertyGroup>
+    11	
+    12	  <ItemGroup>
+    13	    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    14	    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    15	    <PackageReference Include="xunit" Version="2.5.3" />
+    16	    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+    17	  </ItemGroup>
+    18	
+    19	  <ItemGroup>
+    20	    <Using Include="Xunit" />
+    21	  </ItemGroup>
+    22	
+    23	  <ItemGroup>
+    24	    <ProjectReference Include="..\..\src\FinanceAnalyser.Data\FinanceAnalyser.Data.csproj" />
+    25	  </ItemGroup>
+    26	
+    27	</Project>
+---DATA.TESTS.UnitTest1---
+     1	namespace FinanceAnalyser.Data.Tests;
+     2	
+     3	public class UnitTest1
+     4	{
+     5	    [Fact]
+     6	    public void Test1()
+     7	    {
+     8	
+     9	    }
+    10	}

@@ -1,0 +1,269 @@
+    payout_cents: number;
+    is_correction: number;
+    source_format: string;
+  }>;
+}
+
+/** Per-component breakdown of Vorsorgeaufwendungen (social insurance contributions). */
+export interface VorsorgeBreakdown {
+  pension_cents: number;        // Rentenversicherung
+  unemployment_cents: number;   // Arbeitslosenversicherung
+  health_cents: number;         // Krankenversicherung
+  care_cents: number;           // Pflegeversicherung
+}
+
+/** Per-component breakdown of rental property results. */
+export interface RentalBreakdown {
+  rental_income_cents: number;      // Sum of all rent credits
+  mortgage_interest_cents: number;  // Interest payment from EMIs
+  afa_cents: number;                // Depreciation (Abschreibung)
+  maintenance_cents: number;        // Maintenance & repairs (from Property tab)
+  property_tax_cents: number;       // Property tax (from Property tab)
+}
+
+/**
+ * Full tax calculation for the household in `year`, combining both filers'
+ * incomes, deductions, property results, and social contributions.
+ *
+ * Filing status is always 'joint' (Zusammenveranlagung). Tax class only
+ * affects withholding display, not this calculation.
+ */
+export function calculateTax(
+  db: Database.Database,
+  year: number
+): TaxCalculationResult {
+  // ── 1. Fetch tax filers ──────────────────────────────────────────
+  const employee = db
+    .prepare("SELECT * FROM tax_filers WHERE role = 'employee' ORDER BY id LIMIT 1")
+    .get() as any;
+  const freelancer = db
+    .prepare("SELECT * FROM tax_filers WHERE role = 'freelancer' ORDER BY id LIMIT 1")
+    .get() as any;
+
+  const employeeId = employee?.id;
+  const freelancerId = freelancer?.id;
+
+  // ── 2. Fetch payslip data for the employee ───────────────────────
+  let payslips: any[] = [];
+  if (employeeId) {
+    payslips = db
+      .prepare(
+        `SELECT * FROM payslips WHERE filer_id = ? AND year = ? ORDER BY month`
+      )
+      .all(employeeId, year) as any[];
+  }
+
+  // Gross income from payslips (sum of all non-correction months' gross).
+  const grossIncome = payslips
+    .filter((p: any) => !p.is_correction)
+    .reduce((s: number, p: any) => s + p.gross_cents, 0);
+
+  // Social contributions from payslips — total and per-component breakdown.
+  // NOTE: on Infoniqa payslips, health_cents/care_cents are
+  // "AG-Zuschuss private Kranken-/Pflegevers." — the EMPLOYER's tax-free
+  // subsidy toward private insurance (§3 Nr. 62 EStG), not an employee
+  // contribution. They must not be added to payslipVorsorge; instead they
+  // reduce the deductible premium below (§3c EStG bars deducting the
+  // subsidized portion).
+  const nonCorrected = payslips.filter((p: any) => !p.is_correction);
+  const payslipPension = nonCorrected.reduce((s: number, p: any) => s + p.pension_cents, 0);
+  const payslipUnemployment = nonCorrected.reduce((s: number, p: any) => s + p.unemployment_cents, 0);
+  const employerHealthSubsidy = nonCorrected.reduce((s: number, p: any) => s + p.health_cents, 0);
+  const employerCareSubsidy = nonCorrected.reduce((s: number, p: any) => s + p.care_cents, 0);
+  const payslipVorsorge = payslipPension + payslipUnemployment;
+
+  // Already withheld income tax (sum of non-correction months' income_tax_cents).
+  let alreadyWithheld = payslips
+    .filter((p: any) => !p.is_correction)
+    .reduce((s: number, p: any) => s + p.income_tax_cents, 0);
+
+  // ── 3. Werbungskosten-Pauschale (employee flat-rate expense allowance) ─
+  const werbungskosten =
+    WERBUNGSKOSTEN_PAUSCHALE_BY_YEAR[year] ?? 123_000; // default to €1,230
+
+  // ── 4. Freelance income (if any) ──────────────────────────────────
+  let freelanceRevenue = 0;
+  let freelanceExpenses = 0;
+  let freelancerVorsorge = 0;
+  let freelancerHealthVorsorge = 0;
+  let freelancerPensionVorsorge = 0;
+  let freelancerAdvanceTax = 0;
+
+  if (freelancerId) {
+    const fi = db
+      .prepare(
+        `SELECT * FROM freelance_income WHERE filer_id = ? AND year = ?`
+      )
+      .get(freelancerId, year) as any;
+    if (fi) {
+      freelanceRevenue = fi.revenue_cents;
+      freelanceExpenses = fi.business_expenses_cents;
+      freelancerHealthVorsorge = fi.health_insurance_cents || 0;
+      freelancerPensionVorsorge = fi.pension_insurance_cents || 0;
+      freelancerVorsorge = freelancerHealthVorsorge + freelancerPensionVorsorge;
+      freelancerAdvanceTax = fi.advance_tax_paid_cents || 0;
+    }
+  }
+
+  // Add freelancer's advance tax payments (Vorauszahlungen) to already withheld.
+  alreadyWithheld += freelancerAdvanceTax;
+
+  // ── 5. Vorsorgeaufwendungen ───────────────────────────────────────
+  // Sum: payslip contributions + freelancer health/pension (if entered)
+  // or Insurance-category fallback when freelancer data is missing.
+  // Payslip contributions always count (they are mandatory social security).
+  // Insurance transactions only serve as fallback for missing freelancer data
+  // to avoid double-counting if the freelancer entered both.
+  let insuranceTotal = 0;
+  if (freelancerVorsorge === 0) {
+    // 'Insurance' (per the PRD's canonical category taxonomy) also covers
+    // Bayern-Versicherung (life) and Neodigital Versicherung (general),
+    // neither of which is deductible Krankenversicherung — only HALLESCHE
+    // (private health insurance) counts here. Sum gross premium debits only;
+    // the monthly Bonuszahlung is Hallesche's healthy-behavior bonus, not a
+    // Beitragsrückerstattung, so per BMF guidance / BFH X R 16/19 it does
+    // not reduce the deductible amount and must be excluded, not netted.
+    const rows = db
+      .prepare(`
+        SELECT COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) as total
+        FROM transactions
+        WHERE category = 'Insurance'
+          AND description LIKE '%HALLESCHE%'
+          AND date >= ? AND date < ?
+      `)
+      .get(`${year}-01-01`, `${year + 1}-01-01`) as { total: number };
+    insuranceTotal = rows.total;
+  }
+
+  // Net the employer's tax-free Arbeitgeberzuschuss against the private
+  // Kranken-/Pflegeversicherung premium. The single HALLESCHE bank debit
+  // bundles both Kranken and Pflege, so both subsidy components are netted
+  // against it together rather than tracked as a separate "care" deduction.
+  const netHealthCareCents = Math.max(
+    0,
+    insuranceTotal - employerHealthSubsidy - employerCareSubsidy
+  );
+
+  const vorsorgeaufwendungen = payslipVorsorge + freelancerVorsorge + netHealthCareCents;
+
+  // ── 6. Property rental result ─────────────────────────────────────
+  const rentalResult = calculatePropertiesAnnualResult(db, year);
+
+  // ── 7. Compute combined taxable income (zvE) ──────────────────────
+  // Employee: gross income - Werbungskosten (never below 0)
+  const employeeNet = Math.max(0, grossIncome - werbungskosten);
+  // Freelancer: revenue - business expenses (never below 0)
+  const freelanceNet = Math.max(0, freelanceRevenue - freelanceExpenses);
+
+  const taxableIncome =
+    employeeNet +
+    freelanceNet +
+    rentalResult.net_rental_result_cents -
+    vorsorgeaufwendungen;
+
+  // Floor taxable income to 0 (no negative zvE).
+  const zvE = Math.max(0, taxableIncome);
+
+  // ── 8. Read filing settings to decide Grundtabelle vs Splitting ───
+  // Splitting (§§26/26b EStG) only applies when tax_filing_settings
+  // explicitly says 'joint' (married couples filing together). A single
+  // person with both employee + freelance income still uses Grundtabelle.
+  const filingSettings = db
+    .prepare('SELECT * FROM tax_filing_settings WHERE year = ?')
+    .get(year) as { filing_status?: string } | undefined;
+  const filingStatus: 'joint' | 'single' =
+    filingSettings?.filing_status === 'joint' ? 'joint' : 'single';
+
+  const incomeTax = filingStatus === 'joint'
+    ? calculateSplittingTax(zvE, 0, year)
+    : calculateIncomeTax(zvE, year);
+
+  // ── 9. Solidarity Surcharge ───────────────────────────────────────
+  const soli = calculateSolidaritySurcharge(incomeTax, year, filingStatus);
+
+  // ── 10. Determine bracket zone ────────────────────────────────────
+  // Under Splitting, the relevant bracket is determined by zvE/2,
+  // not the combined zvE. Under Grundtabelle, use the full zvE.
+  const bracket = TAX_BRACKETS_BY_YEAR[year];
+  const relevantZvECents = filingStatus === 'joint' ? Math.floor(zvE / 2) : zvE;
+  let zone = 0;
+  if (bracket) {
+    const x = Math.floor(relevantZvECents / 100);
+    if (x <= Math.floor(bracket.grundfreibetragCents / 100)) zone = 1;
+    else if (x <= Math.floor(bracket.zone2UpperCents / 100)) zone = 2;
+    else if (x <= Math.floor(bracket.zone3UpperCents / 100)) zone = 3;
+    else if (x < Math.floor(bracket.zone5LowerCents / 100)) zone = 4;
+    else zone = 5;
+  }
+
+  // Grenzsteuersatz (marginal rate) at the rate-determining income.
+  const marginalRate = marginalTaxRate(relevantZvECents, year);
+
+  // ── 11. Final numbers ─────────────────────────────────────────────
+  const totalTax = incomeTax + soli;
+  const refundOrOwed = alreadyWithheld - totalTax;
+  // Net in hand: a plain waterfall of numbers that are all already shown
+  // elsewhere on this page — no hidden figure (e.g. a payslip's "payout",
+  // which silently folds in the employer's tax-free health/care subsidy)
+  // feeds into it.
+  // Gross Income - Tax Already Withheld - Social Contributions (pension +
+  // unemployment) - Freelance Business Expenses + Refund (or - Amount Owed)
+  const netInHand =
+    grossIncome + freelanceRevenue - alreadyWithheld - payslipVorsorge - freelanceExpenses + refundOrOwed;
+
+  // Durchschnittssteuersatz (average rate): assessed tax over taxable income.
+  const averageTaxRate = zvE > 0 ? incomeTax / zvE : 0;
+
+  return {
+    gross_income_cents: grossIncome + freelanceRevenue,
+    werbungskosten_cents: werbungskosten,
+    freelance_revenue_cents: freelanceRevenue,
+    freelance_expenses_cents: freelanceExpenses,
+    rental_result_cents: rentalResult.net_rental_result_cents,
+    vorsorgeaufwendungen_cents: vorsorgeaufwendungen,
+    vorsorge_breakdown: {
+      pension_cents: payslipPension + freelancerPensionVorsorge,
+      unemployment_cents: payslipUnemployment,
+      health_cents: netHealthCareCents + freelancerHealthVorsorge,
+      care_cents: 0,
+    },
+    rental_breakdown: {
+      rental_income_cents: rentalResult.total_rental_income_cents,
+      mortgage_interest_cents: rentalResult.total_mortgage_interest_cents,
+      afa_cents: rentalResult.total_afa_cents,
+      maintenance_cents: rentalResult.total_maintenance_cents,
+      property_tax_cents: rentalResult.total_property_tax_cents,
+    },
+    taxable_income_cents: zvE,
+    income_tax_cents: incomeTax,
+    solidarity_surcharge_cents: soli,
+    social_contributions_cents: payslipVorsorge,
+    already_withheld_cents: alreadyWithheld,
+    refund_or_owed_cents: refundOrOwed,
+    net_in_hand_cents: netInHand,
+    bracket_zone: zone,
+    splitting_applied: filingStatus === 'joint',
+    rate_determining_income_cents: relevantZvECents,
+    average_tax_rate: averageTaxRate,
+    marginal_tax_rate: marginalRate,
+    insurance_transactions_total_cents: insuranceTotal,
+    months_imported: [...new Set(
+      payslips.filter((p: any) => !p.is_correction).map((p: any) => p.month)
+    )].sort((a: number, b: number) => a - b),
+    payslips: payslips.map((p: any) => ({
+      id: p.id,
+      month: p.month,
+      gross_cents: p.gross_cents,
+      income_tax_cents: p.income_tax_cents,
+      solidarity_surcharge_cents: p.solidarity_surcharge_cents,
+      pension_cents: p.pension_cents,
+      unemployment_cents: p.unemployment_cents,
+      health_cents: p.health_cents,
+      care_cents: p.care_cents,
+      net_cents: p.net_cents,
+      payout_cents: p.payout_cents,
+      is_correction: p.is_correction,
+      source_format: p.source_format,
+    })),
+  };
+}

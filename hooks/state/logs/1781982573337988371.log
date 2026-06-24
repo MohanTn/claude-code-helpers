@@ -1,0 +1,285 @@
+     1	using System.Globalization;
+     2	using System.Text;
+     3	using UglyToad.PdfPig;
+     4	using UglyToad.PdfPig.Content;
+     5	
+     6	namespace FinanceAnalyser.Parsers;
+     7	
+     8	/// <summary>
+     9	/// Reconstructs `pdftotext -layout`-equivalent text from PdfPig's word/bounding-box
+    10	/// model, so the existing regex/line-based bank-statement parsers (ported from the
+    11	/// TypeScript implementation) can be reused with minimal changes.
+    12	///
+    13	/// This is NOT byte-identical to pdftotext's output. It only needs to be
+    14	/// regex-pattern-compatible: bank parser regexes split on runs of whitespace
+    15	/// (\s+ / \s{2,}) rather than fixed-width column slicing, so a reasonable
+    16	/// whitespace reconstruction (proportional to the visual gap between words) is
+    17	/// sufficient.
+    18	/// </summary>
+    19	public static class PdfTextExtractor
+    20	{
+    21	    // Y-coordinate tolerance (in PDF points) for clustering words into the same
+    22	    // visual row. PdfPig's bounding boxes for words on the same printed line
+    23	    // typically agree on baseline/top within a point or two; small statement
+    24	    // fonts (~7-9pt) mean 2-3pt is enough to merge same-row words without
+    25	    // merging adjacent table rows.
+    26	    private const double RowYTolerance = 3.0;
+    27	
+    28	    /// <summary>
+    29	    /// Extracts text from the PDF at <paramref name="pdfPath"/>, reconstructing
+    30	    /// one line per visual row with columns space-aligned (à la `pdftotext -layout`).
+    31	    /// Pages are concatenated with a single newline.
+    32	    /// </summary>
+    33	    public static string ExtractLayoutText(string pdfPath)
+    34	    {
+    35	        if (!File.Exists(pdfPath))
+    36	        {
+    37	            throw new FileNotFoundException($"ExtractLayoutText: file not found: {pdfPath}", pdfPath);
+    38	        }
+    39	
+    40	        using var document = PdfDocument.Open(pdfPath);
+    41	        var pageTexts = new List<string>();
+    42	
+    43	        foreach (var page in document.GetPages())
+    44	        {
+    45	            pageTexts.Add(ExtractPageLayoutText(page));
+    46	        }
+    47	
+    48	        return string.Join("\n", pageTexts);
+    49	    }
+    50	
+    51	    private static string ExtractPageLayoutText(Page page)
+    52	    {
+    53	        // Only consider normal left-to-right horizontal text. Some statements
+    54	        // embed vertically-stacked decorative/barcode-like strings (e.g. a
+    55	        // column of single characters spelling out an internal reference code)
+    56	        // at the same X position repeated down the page; pdftotext -layout
+    57	        // does not interleave these into the horizontal table rows, so we
+    58	        // exclude anything that isn't Horizontal to avoid corrupting
+    59	        // otherwise-clean transaction rows with stray characters.
+    60	        var words = page.GetWords()
+    61	            .Where(w => w.TextOrientation == TextOrientation.Horizontal)
+    62	            .ToList();
+    63	        if (words.Count == 0)
+    64	        {
+    65	            return string.Empty;
+    66	        }
+    67	
+    68	        // Estimate a single "character width" unit for the page, used to convert
+    69	        // horizontal gaps between words into a number of space characters. This
+    70	        // approximates pdftotext -layout's column alignment without requiring a
+    71	        // true fixed-width character grid.
+    72	        double charWidth = EstimateCharWidth(words);
+    73	
+    74	        // pdftotext -layout normalizes so that the leftmost text actually used on
+    75	        // the page starts at column 0 — it does not preserve the page's absolute
+    76	        // physical left margin as leading whitespace. Mirror that by using the
+    77	        // minimum word-left X on the page (not x=0) as the column-0 baseline.
+    78	        double leftMargin = words.Min(w => w.BoundingBox.Left);
+    79	
+    80	        var rows = ClusterIntoRows(words);
+    81	
+    82	        // Estimate the "normal" single-line vertical step (baseline-to-baseline
+    83	        // gap for consecutive, non-blank-separated lines), so that larger gaps
+    84	        // between rows can be translated into the corresponding number of blank
+    85	        // lines — pdftotext -layout represents vertical whitespace this way
+    86	        // (e.g. a blank line between table records), but PdfPig's word model has
+    87	        // no notion of an "empty line" at all, only the words that exist.
+    88	        double lineStep = EstimateLineStep(words);
+    89	
+    90	        var sb = new StringBuilder();
+    91	        double? previousRowY = null;
+    92	        foreach (var row in rows)
+    93	        {
+    94	            double rowY = row.Average(w => w.BoundingBox.Bottom);
+    95	            if (previousRowY.HasValue && lineStep > 0)
+    96	            {
+    97	                double gap = previousRowY.Value - rowY;
+    98	                // pdftotext -layout does not scale blank-line count
+    99	                // proportionally to the physical vertical gap (a large gap from
+   100	                // a section header or table-record separator does not yield
+   101	                // multiple consecutive blank lines) — it collapses any gap
+   102	                // meaningfully larger than one normal line step down to a
+   103	                // single blank line. Mirror that with a fixed threshold rather
+   104	                // than a proportional step count.
+   105	                if (gap > lineStep * 1.5)
+   106	                {
+   107	                    sb.Append('\n');
+   108	                }
+   109	            }
+   110	
+   111	            sb.Append(RenderRow(row, charWidth, leftMargin));
+   112	            sb.Append('\n');
+   113	            previousRowY = rowY;
+   114	        }
+   115	
+   116	        // Trim the single trailing newline added by the loop above; callers join
+   117	        // pages with their own separator.
+   118	        if (sb.Length > 0 && sb[^1] == '\n')
+   119	        {
+   120	            sb.Length--;
+   121	        }
+   122	
+   123	        return sb.ToString();
+   124	    }
+   125	
+   126	    /// <summary>
+   127	    /// Groups words into visual rows by clustering on vertical position (using
+   128	    /// the bounding box's bottom coordinate), then sorts each row left-to-right.
+   129	    /// Rows are returned top-to-bottom (PDF y grows upward, so descending y).
+   130	    /// </summary>
+   131	    private static List<List<Word>> ClusterIntoRows(List<Word> words)
+   132	    {
+   133	        // Sort by descending Y (top of page first), then by X for a stable
+   134	        // initial ordering before clustering.
+   135	        var sorted = words
+   136	            .OrderByDescending(w => w.BoundingBox.Bottom)
+   137	            .ThenBy(w => w.BoundingBox.Left)
+   138	            .ToList();
+   139	
+   140	        var rows = new List<List<Word>>();
+   141	        var currentRow = new List<Word> { sorted[0] };
+   142	        double currentRowY = sorted[0].BoundingBox.Bottom;
+   143	
+   144	        for (int i = 1; i < sorted.Count; i++)
+   145	        {
+   146	            var word = sorted[i];
+   147	            double y = word.BoundingBox.Bottom;
+   148	
+   149	            if (Math.Abs(y - currentRowY) <= RowYTolerance)
+   150	            {
+   151	                currentRow.Add(word);
+   152	                // Track the running average so the tolerance band doesn't drift
+   153	                // across a long row of words with slightly varying baselines.
+   154	                currentRowY = currentRow.Average(w => w.BoundingBox.Bottom);
+   155	            }
+   156	            else
+   157	            {
+   158	                rows.Add(currentRow);
+   159	                currentRow = new List<Word> { word };
+   160	                currentRowY = y;
+   161	            }
+   162	        }
+   163	
+   164	        rows.Add(currentRow);
+   165	
+   166	        // Within each row, sort strictly left-to-right by X0.
+   167	        foreach (var row in rows)
+   168	        {
+   169	            row.Sort((a, b) => a.BoundingBox.Left.CompareTo(b.BoundingBox.Left));
+   170	        }
+   171	
+   172	        return rows;
+   173	    }
+   174	
+   175	    /// <summary>
+   176	    /// Renders a single row of words left-to-right, inserting a number of spaces
+   177	    /// between consecutive words proportional to the horizontal gap between them
+   178	    /// (estimated in character-width units), with a minimum of one space.
+   179	    /// </summary>
+   180	    private static string RenderRow(List<Word> row, double charWidth, double leftMargin)
+   181	    {
+   182	        var sb = new StringBuilder();
+   183	        Word? previous = null;
+   184	
+   185	        foreach (var word in row)
+   186	        {
+   187	            if (previous != null)
+   188	            {
+   189	                double gap = word.BoundingBox.Left - previous.BoundingBox.Right;
+   190	                int spaces = gap > 0 ? Math.Max(1, (int)Math.Round(gap / charWidth)) : 1;
+   191	                sb.Append(' ', spaces);
+   192	            }
+   193	            else
+   194	            {
+   195	                // Leading indentation: approximate the gap from the page's
+   196	                // left margin (the minimum word-left X actually used on the
+   197	                // page, not x=0) so columns that start indented relative to
+   198	                // other rows (e.g. table cells) still line up reasonably
+   199	                // under whitespace-collapsing regexes, while matching
+   200	                // pdftotext -layout's behavior of not padding every line
+   201	                // with the page's absolute physical margin.
+   202	                double gap = word.BoundingBox.Left - leftMargin;
+   203	                int leadingSpaces = gap > 0 ? (int)Math.Round(gap / charWidth) : 0;
+   204	                sb.Append(' ', Math.Max(0, leadingSpaces));
+   205	            }
+   206	
+   207	            sb.Append(word.Text);
+   208	            previous = word;
+   209	        }
+   210	
+   211	        return sb.ToString();
+   212	    }
+   213	
+   214	    /// <summary>
+   215	    /// Estimates the typical baseline-to-baseline single-line vertical step for
+   216	    /// the page, used to convert larger row-to-row Y gaps into a corresponding
+   217	    /// number of blank lines. Derived from the median word bounding-box height
+   218	    /// (scaled up slightly for natural line leading) rather than from row-to-row
+   219	    /// Y gaps directly: gaps are unreliable for this because in some documents
+   220	    /// (e.g. a table where every record is separated by a blank line) the
+   221	    /// "gapped" spacing is the majority case, not the minority, which would bias
+   222	    /// a gap-based median towards the blank-line spacing instead of the true
+   223	    /// single-line step.
+   224	    /// </summary>
+   225	    private static double EstimateLineStep(List<Word> words)
+   226	    {
+   227	        var heights = words
+   228	            .Select(w => w.BoundingBox.Height)
+   229	            .Where(h => h > 0.1)
+   230	            .ToList();
+   231	
+   232	        if (heights.Count == 0)
+   233	        {
+   234	            return 1.0;
+   235	        }
+   236	
+   237	        heights.Sort();
+   238	        double medianHeight = heights[heights.Count / 2];
+   239	
+   240	        // Typical line leading is somewhat larger than the glyph bounding box
+   241	        // height itself (e.g. ~1.15-1.3x for most fonts at small statement
+   242	        // sizes); this multiplier was tuned against the Trade Republic sample
+   243	        // statement's table row spacing.
+   244	        return medianHeight * 1.2;
+   245	    }
+   246	
+   247	    /// <summary>
+   248	    /// Estimates a representative single-character width (in PDF points) for the
+   249	    /// page, used to convert horizontal pixel gaps into a whitespace-run length.
+   250	    /// Computed as the median (word width / character count) across all words
+   251	    /// with non-empty text, which is robust to a handful of very narrow/wide
+   252	    /// "words" (e.g. punctuation-only tokens).
+   253	    /// </summary>
+   254	    private static double EstimateCharWidth(List<Word> words)
+   255	    {
+   256	        var ratios = new List<double>();
+   257	        foreach (var word in words)
+   258	        {
+   259	            var text = word.Text;
+   260	            if (string.IsNullOrEmpty(text))
+   261	            {
+   262	                continue;
+   263	            }
+   264	            double width = word.BoundingBox.Width;
+   265	            if (width <= 0)
+   266	            {
+   267	                continue;
+   268	            }
+   269	            ratios.Add(width / text.Length);
+   270	        }
+   271	
+   272	        if (ratios.Count == 0)
+   273	        {
+   274	            // Fallback: a typical 8-9pt monospace-ish character width.
+   275	            return 4.0;
+   276	        }
+   277	
+   278	        ratios.Sort();
+   279	        double median = ratios[ratios.Count / 2];
+   280	
+   281	        // Guard against degenerate (near-zero) estimates which would blow up the
+   282	        // gap-to-spaces division into an enormous run of spaces.
+   283	        return median > 0.1 ? median : 4.0;
+   284	    }
+   285	}

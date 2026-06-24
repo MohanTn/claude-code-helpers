@@ -1,0 +1,233 @@
+import { fetchJson, apiRequest, jsonInit } from './client'
+
+export interface TaxFiler {
+  id: number;
+  name: string;
+  role: 'employee' | 'freelancer';
+  tax_id: string | null;
+  employer_name: string | null;
+  created_at: string;
+}
+
+export interface Payslip {
+  id: number;
+  filer_id: number;
+  year: number;
+  month: number;
+  tax_class: string | null;
+  employer_name: string | null;
+  gross_cents: number;
+  income_tax_cents: number;
+  church_tax_cents: number;
+  solidarity_surcharge_cents: number;
+  pension_cents: number;
+  unemployment_cents: number;
+  health_cents: number;
+  care_cents: number;
+  net_cents: number;
+  payout_cents: number;
+  is_correction: number;
+  source_format: string;
+  source_pdf: string;
+  issue_date: string | null;
+  raw_text: string;
+  created_at: string;
+}
+
+export interface FreelanceIncome {
+  id: number;
+  filer_id: number;
+  year: number;
+  revenue_cents: number;
+  business_expenses_cents: number;
+  advance_tax_paid_cents: number;
+  health_insurance_cents: number;
+  pension_insurance_cents: number;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface TaxFilingSettings {
+  year: number;
+  filing_status: 'joint' | 'single';
+  bundesland: string | null;
+  church_tax_member_filer_ids: string | null;
+  created_at: string;
+}
+
+export interface HealthInsuranceCertificate {
+  id: number;
+  filer_id: number;
+  year: number;
+  health_cents: number;
+  care_cents: number;
+  source_pdf: string | null;
+  created_at: string;
+}
+
+export interface VorsorgeBreakdown {
+  pension_cents: number;
+  unemployment_cents: number;
+  health_cents: number;
+  care_cents: number;
+}
+
+export interface RentalBreakdown {
+  rental_income_cents: number;
+  mortgage_interest_cents: number;
+  afa_cents: number;
+  maintenance_cents: number;
+  property_tax_cents: number;
+}
+
+export interface TaxCalculationResponse {
+  gross_income_cents: number;
+  werbungskosten_cents: number;
+  freelance_revenue_cents: number;
+  freelance_expenses_cents: number;
+  rental_result_cents: number;
+  sonderausgaben_pauschbetrag_cents: number;
+  vorsorgeaufwendungen_cents: number;
+  vorsorge_breakdown: VorsorgeBreakdown;
+  rental_breakdown: RentalBreakdown;
+  taxable_income_cents: number;
+  income_tax_cents: number;
+  solidarity_surcharge_cents: number;
+  already_withheld_cents: number;
+  refund_or_owed_cents: number;
+  social_contributions_cents: number;
+  net_in_hand_cents: number;
+  employer_health_care_subsidy_cents: number;
+  insurance_transactions_total_cents: number;
+  health_insurance_certificate_cents: number | null;
+  bracket_zone: number;
+  splitting_applied: boolean;
+  rate_determining_income_cents: number;
+  average_tax_rate: number;
+  marginal_tax_rate: number;
+  months_imported: number[];
+  payslips: Payslip[];
+}
+
+export interface PayslipImportResult {
+  imported: number;
+  updated: number;
+  skipped: string[];
+  errors: string[];
+}
+
+export async function getTaxFilers(): Promise<TaxFiler[]> {
+  const data = await fetchJson<{ filers: TaxFiler[] }>('/api/tax/filers', undefined, 'Failed to fetch tax filers');
+  return data.filers;
+}
+
+export async function createTaxFiler(body: {
+  name: string;
+  role: 'employee' | 'freelancer';
+  tax_id?: string;
+  employer_name?: string;
+}): Promise<TaxFiler> {
+  return fetchJson('/api/tax/filers', jsonInit('POST', body), 'Failed to create filer');
+}
+
+export async function updateTaxFiler(id: number, body: {
+  name?: string;
+  role?: 'employee' | 'freelancer';
+  tax_id?: string | null;
+  employer_name?: string | null;
+}): Promise<TaxFiler> {
+  return fetchJson(`/api/tax/filers/${id}`, jsonInit('PATCH', body), 'Failed to update filer');
+}
+
+export async function getPayslips(params: {
+  filer_id?: number;
+  year?: number;
+}): Promise<Payslip[]> {
+  const url = new URL('/api/tax/payslips', window.location.origin);
+  if (params.filer_id !== undefined) url.searchParams.set('filer_id', String(params.filer_id));
+  if (params.year !== undefined) url.searchParams.set('year', String(params.year));
+  const data = await fetchJson<{ payslips: Payslip[] }>(url.pathname + url.search, undefined, 'Failed to fetch payslips');
+  return data.payslips;
+}
+
+export async function uploadPayslip(file: File, filerId: number): Promise<PayslipImportResult> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('filer_id', String(filerId));
+  return fetchJson<PayslipImportResult>('/api/tax/payslips/upload', { method: 'POST', body: form }, 'Upload failed');
+}
+
+export async function deletePayslip(id: number): Promise<void> {
+  return apiRequest(`/api/tax/payslips/${id}`, { method: 'DELETE' }, 'Failed to delete payslip');
+}
+
+export async function getFreelanceIncome(filerId: number, year: number): Promise<FreelanceIncome | null> {
+  const url = new URL('/api/tax/freelance-income', window.location.origin);
+  url.searchParams.set('filer_id', String(filerId));
+  url.searchParams.set('year', String(year));
+  const data = await fetchJson<{ income: FreelanceIncome | null }>(
+    url.pathname + url.search, undefined, 'Failed to fetch freelance income');
+  return data.income;
+}
+
+export async function saveFreelanceIncome(body: {
+  filer_id: number;
+  year: number;
+  revenue_cents?: number;
+  business_expenses_cents?: number;
+  advance_tax_paid_cents?: number;
+  health_insurance_cents?: number;
+  pension_insurance_cents?: number;
+  notes?: string | null;
+}): Promise<FreelanceIncome> {
+  // Check if a record already exists for this filer/year pair
+  const existing = await getFreelanceIncome(body.filer_id, body.year);
+  if (existing) {
+    return fetchJson(`/api/tax/freelance-income/${existing.id}`, jsonInit('PATCH', body), 'Save failed');
+  }
+  return fetchJson('/api/tax/freelance-income', jsonInit('POST', body), 'Failed to save freelance income');
+}
+
+export async function deleteFreelanceIncome(id: number): Promise<void> {
+  return apiRequest(`/api/tax/freelance-income/${id}`, { method: 'DELETE' }, 'Failed to delete freelance income');
+}
+
+export async function getTaxSettings(year: number): Promise<TaxFilingSettings> {
+  const data = await fetchJson<{ settings: TaxFilingSettings }>(
+    `/api/tax/settings?year=${year}`, undefined, 'Failed to fetch tax settings');
+  return data.settings;
+}
+
+export async function putTaxSettings(body: {
+  year: number;
+  filing_status?: 'joint' | 'single';
+  bundesland?: string | null;
+  church_tax_member_filer_ids?: string | null;
+}): Promise<TaxFilingSettings> {
+  const data = await fetchJson<{ settings: TaxFilingSettings }>(
+    '/api/tax/settings', jsonInit('PUT', body), 'Failed to save tax settings');
+  return data.settings;
+}
+
+export async function getTaxCalculation(year: number): Promise<TaxCalculationResponse> {
+  return fetchJson(`/api/tax/calculation?year=${year}`, undefined, 'Failed to fetch tax calculation');
+}
+
+export async function getHealthInsuranceCertificate(filerId: number, year: number): Promise<HealthInsuranceCertificate | null> {
+  const url = new URL('/api/tax/health-insurance-certificate', window.location.origin);
+  url.searchParams.set('filer_id', String(filerId));
+  url.searchParams.set('year', String(year));
+  const data = await fetchJson<{ certificate: HealthInsuranceCertificate | null }>(
+    url.pathname + url.search, undefined, 'Failed to fetch health insurance certificate');
+  return data.certificate;
+}
+
+export async function uploadHealthInsuranceCertificate(file: File, filerId: number): Promise<HealthInsuranceCertificate> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('filer_id', String(filerId));
+  const data = await fetchJson<{ certificate?: HealthInsuranceCertificate; error?: string }>(
+    '/api/tax/health-insurance-certificate/upload', { method: 'POST', body: form }, 'Upload failed');
+  if (!data.certificate) throw new Error(data.error ?? 'Upload failed');
+  return data.certificate;
+}

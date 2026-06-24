@@ -1,0 +1,246 @@
+     1	// Regression tests for src/property/amortization.ts.
+     2	//
+     3	// These functions were extracted verbatim from src/api/server.ts (formerly
+     4	// inline closures inside createApp()). The assertions here use expected
+     5	// values computed by hand from the same logic that existed pre-extraction,
+     6	// to confirm the extraction is behavior-identical.
+     7	
+     8	import { test } from 'node:test';
+     9	import * as assert from 'node:assert';
+    10	import { mkdtempSync, readFileSync } from 'node:fs';
+    11	import { tmpdir } from 'node:os';
+    12	import path from 'node:path';
+    13	import Database from 'better-sqlite3';
+    14	import { propertyTotalCost, computeMortgageAmortization, ACQUISITION_COST_TYPES } from './amortization.js';
+    15	
+    16	const SCHEMA_PATH = path.resolve(import.meta.dirname, '../db/schema.sql');
+    17	
+    18	function createTempDb(): Database.Database {
+    19	  const dir = mkdtempSync(path.join(tmpdir(), 'finance-amortization-test-'));
+    20	  const file = path.join(dir, 'finance.db');
+    21	  const db = new Database(file);
+    22	  db.exec(readFileSync(SCHEMA_PATH, 'utf-8'));
+    23	  return db;
+    24	}
+    25	
+    26	function seedAccount(db: Database.Database): number {
+    27	  const result = db
+    28	    .prepare(`INSERT INTO accounts (name, institution, type, currency, is_credit_card) VALUES (?, ?, ?, 'EUR', 0)`)
+    29	    .run('Test Account', 'TestBank', 'asset');
+    30	  return result.lastInsertRowid as number;
+    31	}
+    32	
+    33	function insertTransaction(db: Database.Database, accountId: number, date: string, description: string, amountCents: number): number {
+    34	  const result = db
+    35	    .prepare(`
+    36	      INSERT INTO transactions (account_id, date, description, amount_cents, currency, category, raw_text, source_pdf, source_hash)
+    37	      VALUES (?, ?, ?, ?, 'EUR', 'Other', ?, 'test.pdf', ?)
+    38	    `)
+    39	    .run(accountId, date, description, amountCents, description, `${date}-${description}-${amountCents}`);
+    40	  return result.lastInsertRowid as number;
+    41	}
+    42	
+    43	test('ACQUISITION_COST_TYPES exports the same 5 cost types used in the original inline const', () => {
+    44	  assert.deepStrictEqual(ACQUISITION_COST_TYPES, [
+    45	    'purchase_price',
+    46	    'grunderwerbsteuer',
+    47	    'notarkosten',
+    48	    'maklergebuehr',
+    49	    'grundbuchkosten',
+    50	  ]);
+    51	});
+    52	
+    53	test('propertyTotalCost: sums manual cost fields when no linked transactions exist', () => {
+    54	  const db = createTempDb();
+    55	
+    56	  const property = {
+    57	    id: 1,
+    58	    purchase_price_cents: 30_000_000, // 300,000.00 EUR
+    59	    grunderwerbsteuer_cents: 1_500_000, // 15,000.00 EUR (5%)
+    60	    notarkosten_cents: 450_000, // 4,500.00 EUR
+    61	    maklergebuehr_cents: 900_000, // 9,000.00 EUR
+    62	    grundbuchkosten_cents: 150_000, // 1,500.00 EUR
+    63	  };
+    64	  db.prepare(`
+    65	    INSERT INTO properties (id, name, purchase_price_cents, purchase_date, grunderwerbsteuer_cents, notarkosten_cents, maklergebuehr_cents, grundbuchkosten_cents)
+    66	    VALUES (1, 'Test Property', ?, '2023-01-15', ?, ?, ?, ?)
+    67	  `).run(
+    68	    property.purchase_price_cents,
+    69	    property.grunderwerbsteuer_cents,
+    70	    property.notarkosten_cents,
+    71	    property.maklergebuehr_cents,
+    72	    property.grundbuchkosten_cents,
+    73	  );
+    74	
+    75	  // Expected: pure sum of manual fields, no linked transactions, no property_transactions rows.
+    76	  const expected =
+    77	    property.purchase_price_cents +
+    78	    property.grunderwerbsteuer_cents +
+    79	    property.notarkosten_cents +
+    80	    property.maklergebuehr_cents +
+    81	    property.grundbuchkosten_cents; // = 33,000,000
+    82	
+    83	  const total = propertyTotalCost(property, db);
+    84	  assert.strictEqual(total, 33_000_000);
+    85	  assert.strictEqual(total, expected);
+    86	});
+    87	
+    88	test('propertyTotalCost: linked transactions override manual fields per cost_type, plus acquisition property_transactions are added on top', () => {
+    89	  const db = createTempDb();
+    90	  const accountId = seedAccount(db);
+    91	
+    92	  const property = {
+    93	    id: 1,
+    94	    purchase_price_cents: 30_000_000,
+    95	    grunderwerbsteuer_cents: 1_500_000,
+    96	    notarkosten_cents: 450_000,
+    97	    maklergebuehr_cents: 900_000,
+    98	    grundbuchkosten_cents: 150_000,
+    99	  };
+   100	  db.prepare(`
+   101	    INSERT INTO properties (id, name, purchase_price_cents, purchase_date, grunderwerbsteuer_cents, notarkosten_cents, maklergebuehr_cents, grundbuchkosten_cents)
+   102	    VALUES (1, 'Test Property', ?, '2023-01-15', ?, ?, ?, ?)
+   103	  `).run(
+   104	    property.purchase_price_cents,
+   105	    property.grunderwerbsteuer_cents,
+   106	    property.notarkosten_cents,
+   107	    property.maklergebuehr_cents,
+   108	    property.grundbuchkosten_cents,
+   109	  );
+   110	
+   111	  // Link an actual transaction for purchase_price (-305,000.00 EUR, abs = 30,500,000 cents)
+   112	  // which should override the manual purchase_price_cents (30,000,000).
+   113	  const purchaseTxnId = insertTransaction(db, accountId, '2023-01-15', 'Notary purchase payment', -30_500_000);
+   114	  db.prepare(`INSERT INTO property_cost_links (property_id, cost_type, transaction_id) VALUES (1, 'purchase_price', ?)`).run(purchaseTxnId);
+   115	
+   116	  // Link a second transaction for the SAME cost_type to verify SUM(ABS(...)) aggregation
+   117	  // (e.g. a partial follow-up payment of 500.00 EUR).
+   118	  const purchaseTxnId2 = insertTransaction(db, accountId, '2023-01-20', 'Notary purchase follow-up', -50_000);
+   119	  db.prepare(`INSERT INTO property_cost_links (property_id, cost_type, transaction_id) VALUES (1, 'purchase_price', ?)`).run(purchaseTxnId2);
+   120	
+   121	  // Link grunderwerbsteuer transaction overriding the manual field too.
+   122	  const taxTxnId = insertTransaction(db, accountId, '2023-02-01', 'Grunderwerbsteuer', -1_600_000);
+   123	  db.prepare(`INSERT INTO property_cost_links (property_id, cost_type, transaction_id) VALUES (1, 'grunderwerbsteuer', ?)`).run(taxTxnId);
+   124	
+   125	  // notarkosten, maklergebuehr, grundbuchkosten remain unlinked -> fall back to manual fields.
+   126	
+   127	  // Also add an acquisition-type property_transactions row (separate accounting path, summed unconditionally).
+   128	  db.prepare(`
+   129	    INSERT INTO property_transactions (property_id, date, type, amount_cents, description)
+   130	    VALUES (1, '2023-01-10', 'acquisition_agent_fee', 200000, 'Extra agent fee')
+   131	  `).run();
+   132	
+   133	  // Add a non-acquisition property_transactions row that must NOT be counted (e.g. mortgage_payment type).
+   134	  db.prepare(`
+   135	    INSERT INTO property_transactions (property_id, date, type, amount_cents, description)
+   136	    VALUES (1, '2023-03-01', 'mortgage_payment', -50000, 'Should not be counted')
+   137	  `).run();
+   138	
+   139	  const expectedLinkedPurchasePrice = 30_500_000 + 50_000; // SUM(ABS(...)) across both linked txns = 30,550,000
+   140	  const expectedLinkedTax = 1_600_000;
+   141	  const expectedFallback = property.notarkosten_cents + property.maklergebuehr_cents + property.grundbuchkosten_cents; // 1,500,000
+   142	  const expectedAcquisitionPropertyTxns = 200_000;
+   143	
+   144	  const expectedTotal = expectedLinkedPurchasePrice + expectedLinkedTax + expectedFallback + expectedAcquisitionPropertyTxns;
+   145	  // = 30,550,000 + 1,600,000 + 1,500,000 + 200,000 = 33,850,000
+   146	
+   147	  const total = propertyTotalCost(property, db);
+   148	  assert.strictEqual(total, 33_850_000);
+   149	  assert.strictEqual(total, expectedTotal);
+   150	});
+   151	
+   152	test('propertyTotalCost: missing manual fields default to 0 via `manualMap[ct] || 0`', () => {
+   153	  const db = createTempDb();
+   154	
+   155	  // Property object missing all the *_cents fields (simulates p.grunderwerbsteuer_cents etc. being undefined).
+   156	  const property = { id: 1, purchase_price_cents: 10_000_000 };
+   157	  db.prepare(`
+   158	    INSERT INTO properties (id, name, purchase_price_cents, purchase_date)
+   159	    VALUES (1, 'Bare Property', 10000000, '2023-06-01')
+   160	  `).run();
+   161	
+   162	  const total = propertyTotalCost(property, db);
+   163	  assert.strictEqual(total, 10_000_000);
+   164	});
+   165	
+   166	test('computeMortgageAmortization: returns zeroed result when mortgage is null', () => {
+   167	  const result = computeMortgageAmortization(null, [{ transaction_id: 1, date: '2023-01-01', amount_cents: -100000 }]);
+   168	  assert.deepStrictEqual(result, {
+   169	    total_principal_paid_cents: 0,
+   170	    total_interest_paid_cents: 0,
+   171	    amortizedTransactions: [],
+   172	  });
+   173	});
+   174	
+   175	test('computeMortgageAmortization: returns zeroed result when emiLinks is empty', () => {
+   176	  const mortgage = { interest_rate: 3.6, outstanding_balance_cents: 20_000_000 };
+   177	  const result = computeMortgageAmortization(mortgage, []);
+   178	  assert.deepStrictEqual(result, {
+   179	    total_principal_paid_cents: 0,
+   180	    total_interest_paid_cents: 0,
+   181	    amortizedTransactions: [],
+   182	  });
+   183	});
+   184	
+   185	test('computeMortgageAmortization: splits sequential EMI payments into interest/principal by hand-computed amortization schedule', () => {
+   186	  // Mortgage: 200,000.00 EUR outstanding, 3.6% annual interest -> 0.3%/mo = 0.003 monthly rate.
+   187	  const mortgage = {
+   188	    interest_rate: 3.6,
+   189	    outstanding_balance_cents: 20_000_000,
+   190	  };
+   191	
+   192	  // Three monthly EMI payments of 1,000.00 EUR each, provided out of order to verify date-sort.
+   193	  const emiLinks = [
+   194	    { transaction_id: 3, date: '2023-03-01', amount_cents: -100_000 },
+   195	    { transaction_id: 1, date: '2023-01-01', amount_cents: -100_000 },
+   196	    { transaction_id: 2, date: '2023-02-01', amount_cents: -100_000 },
+   197	  ];
+   198	
+   199	  // Hand-computed schedule (monthlyRate = 0.003):
+   200	  // Month 1: balance=20,000,000 -> interest = round(20,000,000*0.003) = 60,000
+   201	  //          principal = min(100,000 - 60,000, 20,000,000) = 40,000
+   202	  //          new balance = 19,960,000
+   203	  // Month 2: balance=19,960,000 -> interest = round(19,960,000*0.003) = round(59,880) = 59,880
+   204	  //          principal = min(100,000 - 59,880, 19,960,000) = 40,120
+   205	  //          new balance = 19,919,880
+   206	  // Month 3: balance=19,919,880 -> interest = round(19,919,880*0.003) = round(59,759.64) = 59,760
+   207	  //          principal = min(100,000 - 59,760, 19,919,880) = 40,240
+   208	  //          new balance = 19,879,640
+   209	  const expectedAmortized = [
+   210	    { transaction_id: 1, interest_cents: 60_000, principal_cents: 40_000 },
+   211	    { transaction_id: 2, interest_cents: 59_880, principal_cents: 40_120 },
+   212	    { transaction_id: 3, interest_cents: 59_760, principal_cents: 40_240 },
+   213	  ];
+   214	  const expectedTotalPrincipal = 40_000 + 40_120 + 40_240; // 120,360
+   215	  const expectedTotalInterest = 60_000 + 59_880 + 59_760; // 179,640
+   216	
+   217	  const result = computeMortgageAmortization(mortgage, emiLinks);
+   218	
+   219	  assert.strictEqual(result.total_principal_paid_cents, expectedTotalPrincipal);
+   220	  assert.strictEqual(result.total_interest_paid_cents, expectedTotalInterest);
+   221	  assert.deepStrictEqual(result.amortizedTransactions, expectedAmortized);
+   222	});
+   223	
+   224	test('computeMortgageAmortization: stops once currentBalance reaches 0 (break condition), ignoring remaining EMIs', () => {
+   225	  // Small mortgage that gets paid off by the second EMI.
+   226	  const mortgage = {
+   227	    interest_rate: 0, // 0% interest simplifies hand calc: principal = full EMI amount each time
+   228	    outstanding_balance_cents: 150_000, // 1,500.00 EUR
+   229	  };
+   230	
+   231	  const emiLinks = [
+   232	    { transaction_id: 1, date: '2023-01-01', amount_cents: -100_000 }, // pays down to 50,000
+   233	    { transaction_id: 2, date: '2023-02-01', amount_cents: -100_000 }, // principal capped at remaining 50,000 -> balance hits 0
+   234	    { transaction_id: 3, date: '2023-03-01', amount_cents: -100_000 }, // should be skipped: currentBalance <= 0 before this iteration
+   235	  ];
+   236	
+   237	  const result = computeMortgageAmortization(mortgage, emiLinks);
+   238	
+   239	  assert.strictEqual(result.total_principal_paid_cents, 150_000);
+   240	  assert.strictEqual(result.total_interest_paid_cents, 0);
+   241	  assert.strictEqual(result.amortizedTransactions.length, 2);
+   242	  assert.deepStrictEqual(result.amortizedTransactions, [
+   243	    { transaction_id: 1, interest_cents: 0, principal_cents: 100_000 },
+   244	    { transaction_id: 2, interest_cents: 0, principal_cents: 50_000 },
+   245	  ]);
+   246	});

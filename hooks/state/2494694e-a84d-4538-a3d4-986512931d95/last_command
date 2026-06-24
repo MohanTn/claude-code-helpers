@@ -1,0 +1,1 @@
+cd /home/mohan/REPO/finance-analyser/frontend && npx tsc -b --force 2>&1 | tail -20 && npx vitest run 2>&1 | tail -8 && cd .. && git status --short | head -50

@@ -1,0 +1,296 @@
+     1	namespace FinanceAnalyser.Core.Tax;
+     2	
+     3	// German §32a EStG income-tax bracket constants, Solidaritätszuschlag exemption
+     4	// thresholds, and the Arbeitnehmer-Pauschbetrag (flat-rate employee expense
+     5	// allowance), for tax years 2022-2026.
+     6	//
+     7	// All monetary figures are stored in CENTS (euros * 100), per this codebase's
+     8	// `_cents` convention. Every number below was hand-transcribed from the
+     9	// source table in the task spec and cross-checked in constants.test.ts —
+    10	// treat any future change to these values as a tax-law transcription task,
+    11	// not a refactor: re-verify against the official §32a EStG text / BMF
+    12	// publications before touching a digit.
+    13	//
+    14	// Ported from src/tax/constants.ts. Keep numerically identical to the TS source.
+    15	
+    16	/// <summary>
+    17	/// One year's §32a EStG progressive income-tax bracket definition.
+    18	///
+    19	/// The German income tax formula is piecewise over 5 zones:
+    20	///   Zone 1 (0 .. GrundfreibetragCents):            tax = 0
+    21	///   Zone 2 (Zone2LowerCents .. Zone2UpperCents):    tax = (Zone2YCoefficient * y + 1400) * y
+    22	///   Zone 3 (Zone3LowerCents .. Zone3UpperCents):    tax = (Zone3ZCoefficient * z + Zone3ZLinearConstant) * z + Zone3ZAddendCents
+    23	///   Zone 4 (Zone3UpperCents+1 .. Zone5LowerCents-1): tax = 0.42 * x - Zone4SubtrahendCents
+    24	///   Zone 5 (Zone5LowerCents .. infinity):            tax = 0.45 * x - Zone5SubtrahendCents
+    25	///
+    26	/// Where (per official BMF practice) the inputs are floored to whole euros
+    27	/// before being divided:
+    28	///   y = floor((zvE_cents/100 - GrundfreibetragCents/100)) / 10000
+    29	///   z = floor((zvE_cents/100 - (Zone3LowerCents/100 - 1))) / 10000
+    30	///   x = zvE_cents / 100
+    31	///
+    32	/// This record only stores the raw bracket boundaries/coefficients; the
+    33	/// flooring + piecewise dispatch belongs to <see cref="IncomeTax"/>.
+    34	/// </summary>
+    35	public sealed record TaxBracketYear
+    36	{
+    37	    /// <summary>Grundfreibetrag (tax-free allowance), in cents. Top of zone 1.</summary>
+    38	    public required long GrundfreibetragCents { get; init; }
+    39	
+    40	    /// <summary>Zone 2 lower bound, in cents (GrundfreibetragCents + 100).</summary>
+    41	    public required long Zone2LowerCents { get; init; }
+    42	    /// <summary>Zone 2 upper bound, in cents.</summary>
+    43	    public required long Zone2UpperCents { get; init; }
+    44	    /// <summary>Zone 2 formula: tax = (Zone2YCoefficientCents/100 * y + 1400) * y</summary>
+    45	    public required long Zone2YCoefficientCents { get; init; }
+    46	    /// <summary>Zone 2 formula linear constant (1400 in every year covered here).</summary>
+    47	    public required long Zone2LinearConstant { get; init; }
+    48	
+    49	    /// <summary>Zone 3 lower bound, in cents (Zone2UpperCents + 100).</summary>
+    50	    public required long Zone3LowerCents { get; init; }
+    51	    /// <summary>Zone 3 upper bound, in cents.</summary>
+    52	    public required long Zone3UpperCents { get; init; }
+    53	    /// <summary>Zone 3 formula: tax = (Zone3ZCoefficientCents/100 * z + 2397) * z + Zone3ZAddendCents/100</summary>
+    54	    public required long Zone3ZCoefficientCents { get; init; }
+    55	    /// <summary>Zone 3 formula linear constant (2397 in every year covered here).</summary>
+    56	    public required long Zone3LinearConstant { get; init; }
+    57	    /// <summary>Zone 3 formula additive constant, in cents.</summary>
+    58	    public required long Zone3ZAddendCents { get; init; }
+    59	
+    60	    /// <summary>
+    61	    /// Zone 4 lower bound, in cents. Equal to Zone3UpperCents + 100 (i.e. the
+    62	    /// next whole euro above zone 3's upper bound).
+    63	    /// </summary>
+    64	    public required long Zone4LowerCents { get; init; }
+    65	    /// <summary>Zone 4 formula: tax = 0.42 * x - Zone4SubtrahendCents/100</summary>
+    66	    public required long Zone4SubtrahendCents { get; init; }
+    67	
+    68	    /// <summary>
+    69	    /// Zone 5 lower bound, in cents — the zone4/zone5 boundary. This is the
+    70	    /// income at which the zone 4 and zone 5 linear formulas cross
+    71	    /// (0.42x - Zone4Subtrahend == 0.45x - Zone5Subtrahend), derived as:
+    72	    ///   x_cross = (Zone5SubtrahendCents - Zone4SubtrahendCents) / 0.03
+    73	    /// Stored explicitly here (rounded to whole cents) so callers never need
+    74	    /// to re-derive it.
+    75	    /// </summary>
+    76	    public required long Zone5LowerCents { get; init; }
+    77	    /// <summary>Zone 5 formula: tax = 0.45 * x - Zone5SubtrahendCents/100</summary>
+    78	    public required long Zone5SubtrahendCents { get; init; }
+    79	}
+    80	
+    81	/// <summary>
+    82	/// Solidaritätszuschlag Freigrenze (exemption threshold): below this taxable
+    83	/// income, no Soli is owed. All figures in cents.
+    84	/// </summary>
+    85	public sealed record SoliExemption
+    86	{
+    87	    public required long SingleCents { get; init; }
+    88	    public required long JointCents { get; init; }
+    89	}
+    90	
+    91	/// <summary>
+    92	/// Entfernungspauschale (commute allowance, §9 Abs. 1 Satz 3 Nr. 4 EStG) per-km
+    93	/// rate, tiered at the 21st km. Unchanged 2022-2026 (raised to 38ct/km beyond
+    94	/// the 20th km by the Steuerentlastungsgesetz 2022, retroactive to 2022, and
+    95	/// not adjusted since).
+    96	/// </summary>
+    97	public sealed record EntfernungspauschaleRate
+    98	{
+    99	    public required int FirstTierKm { get; init; }
+   100	    public required long FirstTierCentsPerKm { get; init; }
+   101	    public required long BeyondTierCentsPerKm { get; init; }
+   102	}
+   103	
+   104	/// <summary>
+   105	/// Homeoffice-Tagespauschale (§4 Abs. 5 Satz 1 Nr. 6c EStG): flat per-day
+   106	/// allowance for days worked from home, capped annually. Raised from €5/day
+   107	/// (max 120 days) to €6/day (max 210 days) by the Jahressteuergesetz 2022,
+   108	/// effective tax year 2023; unchanged through 2026.
+   109	/// </summary>
+   110	public sealed record TagespauschaleRate
+   111	{
+   112	    public required long CentsPerDay { get; init; }
+   113	    public required int MaxDays { get; init; }
+   114	}
+   115	
+   116	/// <summary>
+   117	/// Static lookup tables for German §32a EStG tax brackets, Soli exemption
+   118	/// thresholds, and the Werbungskostenpauschale, by tax year (2022-2026).
+   119	/// Ported from src/tax/constants.ts.
+   120	/// </summary>
+   121	public static class TaxConstants
+   122	{
+   123	    // x_cross (in cents) = (zone5Sub - zone4Sub) / (0.45 - 0.42) = / 0.03
+   124	    private static long Zone5LowerFromCrossing(long zone4SubtrahendCents, long zone5SubtrahendCents) =>
+   125	        (long)Math.Round((zone5SubtrahendCents - zone4SubtrahendCents) / 0.03, MidpointRounding.AwayFromZero);
+   126	
+   127	    /// <summary>
+   128	    /// Constructs a TaxBracketYear, deriving all boundary-crossing fields
+   129	    /// (Zone2LowerCents, Zone3LowerCents, Zone4LowerCents, Zone5LowerCents)
+   130	    /// from the eight hand-transcribed literals in the parameters, so a
+   131	    /// future correction to any boundary automatically updates its neighbours.
+   132	    /// </summary>
+   133	    private static TaxBracketYear MakeBracket(
+   134	        long grundfreibetragCents,
+   135	        long zone2UpperCents,
+   136	        long zone2YCoefficientCents,
+   137	        long zone3UpperCents,
+   138	        long zone3ZCoefficientCents,
+   139	        long zone3ZAddendCents,
+   140	        long zone4SubtrahendCents,
+   141	        long zone5SubtrahendCents) => new()
+   142	        {
+   143	            GrundfreibetragCents = grundfreibetragCents,
+   144	            Zone2LowerCents = grundfreibetragCents + 100,
+   145	            Zone2UpperCents = zone2UpperCents,
+   146	            Zone2YCoefficientCents = zone2YCoefficientCents,
+   147	            Zone2LinearConstant = 1400,
+   148	            Zone3LowerCents = zone2UpperCents + 100,
+   149	            Zone3UpperCents = zone3UpperCents,
+   150	            Zone3ZCoefficientCents = zone3ZCoefficientCents,
+   151	            Zone3LinearConstant = 2397,
+   152	            Zone3ZAddendCents = zone3ZAddendCents,
+   153	            Zone4LowerCents = zone3UpperCents + 100,
+   154	            Zone4SubtrahendCents = zone4SubtrahendCents,
+   155	            Zone5LowerCents = Zone5LowerFromCrossing(zone4SubtrahendCents, zone5SubtrahendCents),
+   156	            Zone5SubtrahendCents = zone5SubtrahendCents,
+   157	        };
+   158	
+   159	    public static readonly Dictionary<int, TaxBracketYear> TaxBracketsByYear = new()
+   160	    {
+   161	        [2022] = MakeBracket(
+   162	            grundfreibetragCents: 1_034_700, // €10,347
+   163	            zone2UpperCents: 1_492_600, // €14,926
+   164	            zone2YCoefficientCents: 108_867, // 1,088.67
+   165	            zone3UpperCents: 5_859_600, // €58,596
+   166	            zone3ZCoefficientCents: 20_643, // 206.43
+   167	            zone3ZAddendCents: 86_932, // 869.32
+   168	            zone4SubtrahendCents: 933_645, // 9,336.45
+   169	            zone5SubtrahendCents: 1_767_120 // 17,671.20
+   170	        ),
+   171	        [2023] = MakeBracket(
+   172	            grundfreibetragCents: 1_090_800, // €10,908
+   173	            zone2UpperCents: 1_599_900, // €15,999
+   174	            zone2YCoefficientCents: 97_918, // 979.18
+   175	            zone3UpperCents: 6_280_900, // €62,809
+   176	            zone3ZCoefficientCents: 19_259, // 192.59
+   177	            zone3ZAddendCents: 96_653, // 966.53
+   178	            zone4SubtrahendCents: 997_298, // 9,972.98
+   179	            zone5SubtrahendCents: 1_830_773 // 18,307.73
+   180	        ),
+   181	        [2024] = MakeBracket(
+   182	            grundfreibetragCents: 1_178_400, // €11,784
+   183	            zone2UpperCents: 1_700_500, // €17,005
+   184	            zone2YCoefficientCents: 95_480, // 954.80
+   185	            zone3UpperCents: 6_676_000, // €66,760
+   186	            zone3ZCoefficientCents: 18_119, // 181.19
+   187	            zone3ZAddendCents: 99_121, // 991.21
+   188	            zone4SubtrahendCents: 1_063_631, // 10,636.31
+   189	            zone5SubtrahendCents: 1_897_106 // 18,971.06
+   190	        ),
+   191	        [2025] = MakeBracket(
+   192	            grundfreibetragCents: 1_209_600, // €12,096
+   193	            zone2UpperCents: 1_744_300, // €17,443
+   194	            zone2YCoefficientCents: 93_230, // 932.30
+   195	            zone3UpperCents: 6_848_000, // €68,480
+   196	            zone3ZCoefficientCents: 17_664, // 176.64
+   197	            zone3ZAddendCents: 101_513, // 1,015.13
+   198	            zone4SubtrahendCents: 1_091_192, // 10,911.92
+   199	            zone5SubtrahendCents: 1_924_667 // 19,246.67
+   200	        ),
+   201	        [2026] = MakeBracket(
+   202	            grundfreibetragCents: 1_234_800, // €12,348
+   203	            zone2UpperCents: 1_779_900, // €17,799
+   204	            zone2YCoefficientCents: 91_451, // 914.51
+   205	            zone3UpperCents: 6_987_800, // €69,878
+   206	            zone3ZCoefficientCents: 17_310, // 173.10
+   207	            zone3ZAddendCents: 103_487, // 1,034.87
+   208	            zone4SubtrahendCents: 1_113_563, // 11,135.63
+   209	            zone5SubtrahendCents: 1_947_038 // 19,470.38
+   210	        ),
+   211	    };
+   212	
+   213	    public static readonly Dictionary<int, SoliExemption> SoliExemptionByYear = new()
+   214	    {
+   215	        [2022] = new SoliExemption { SingleCents = 1_695_600, JointCents = 3_391_200 }, // €16,956 / €33,912
+   216	        [2023] = new SoliExemption { SingleCents = 1_754_300, JointCents = 3_508_600 }, // €17,543 / €35,086
+   217	        [2024] = new SoliExemption { SingleCents = 1_813_000, JointCents = 3_626_000 }, // €18,130 / €36,260
+   218	        [2025] = new SoliExemption { SingleCents = 1_995_000, JointCents = 3_990_000 }, // €19,950 / €39,900
+   219	        [2026] = new SoliExemption { SingleCents = 2_035_000, JointCents = 4_070_000 }, // €20,350 / €40,700
+   220	    };
+   221	
+   222	    /// <summary>
+   223	    /// Arbeitnehmer-Pauschbetrag (flat-rate employee expense allowance / aka
+   224	    /// Werbungskostenpauschale), in cents, by tax year.
+   225	    ///
+   226	    /// History: raised from €1,000 to €1,200 for tax year 2022 via the
+   227	    /// Steuerentlastungsgesetz 2022 (applied retroactively for the full 2022 tax
+   228	    /// year, not prorated), then raised again to €1,230 starting tax year 2023,
+   229	    /// where it has remained through 2026.
+   230	    /// </summary>
+   231	    public static readonly Dictionary<int, long> WerbungskostenPauschaleByYear = new()
+   232	    {
+   233	        // Source: Steuerentlastungsgesetz 2022 (BGBl. 2022 I, published 27 May
+   234	        // 2022), retroactive to 1 Jan 2022; raised from €1,000 to €1,200.
+   235	        [2022] = 120_000, // €1,200
+   236	        // Source: Inflationsausgleichsgesetz, raised from €1,200 to €1,230
+   237	        // effective tax year 2023.
+   238	        [2023] = 123_000, // €1,230
+   239	        // Source: unchanged from 2023; BMF Lohnsteuer-Handbuch 2024.
+   240	        [2024] = 123_000, // €1,230
+   241	        // Source: unchanged; confirmed in task spec.
+   242	        [2025] = 123_000, // €1,230
+   243	        // Source: unchanged; confirmed in task spec.
+   244	        [2026] = 123_000, // €1,230
+   245	    };
+   246	
+   247	    /// <summary>
+   248	    /// Sonderausgaben-Pauschbetrag (§10c EStG): flat-rate allowance for
+   249	    /// special expenses (e.g. donations, Kirchensteuer) granted whenever no
+   250	    /// itemized claim exceeds it. Unchanged since 2002 — not year-indexed.
+   251	    /// </summary>
+   252	    public const long SonderausgabenPauschbetragSingleCents = 3_600; // €36
+   253	
+   254	    /// <summary>Joint-filing (Zusammenveranlagung) variant: double the single rate.</summary>
+   255	    public const long SonderausgabenPauschbetragJointCents = 7_200; // €72
+   256	
+   257	    /// <summary>
+   258	    /// §10 Abs. 4 EStG cap on "sonstige Vorsorgeaufwendungen" (everything
+   259	    /// except pension: health, care, unemployment insurance) per person.
+   260	    /// €1,900 applies to anyone with a statutory-equivalent claim to
+   261	    /// employer-subsidized health insurance (regular employees); €2,800
+   262	    /// applies otherwise (e.g. self-employed paying the full premium
+   263	    /// themselves). Unchanged since 2010 — not year-indexed. Note the
+   264	    /// Mindestbetrag rule (Satz 4) can override this cap — see TaxCalculator.
+   265	    /// </summary>
+   266	    public const long SonstigeVorsorgeCapEmployeeCents = 190_000; // €1,900
+   267	
+   268	    /// <summary>Self-employed/freelancer variant of the §10 Abs. 4 cap.</summary>
+   269	    public const long SonstigeVorsorgeCapFreelancerCents = 280_000; // €2,800
+   270	
+   271	    /// <summary>
+   272	    /// Entfernungspauschale rate by year: 30ct/km for the first 20km of a
+   273	    /// one-way commute, 38ct/km beyond. Same value every year covered here.
+   274	    /// </summary>
+   275	    public static readonly Dictionary<int, EntfernungspauschaleRate> EntfernungspauschaleRatesByYear = new()
+   276	    {
+   277	        [2022] = new EntfernungspauschaleRate { FirstTierKm = 20, FirstTierCentsPerKm = 30, BeyondTierCentsPerKm = 38 },
+   278	        [2023] = new EntfernungspauschaleRate { FirstTierKm = 20, FirstTierCentsPerKm = 30, BeyondTierCentsPerKm = 38 },
+   279	        [2024] = new EntfernungspauschaleRate { FirstTierKm = 20, FirstTierCentsPerKm = 30, BeyondTierCentsPerKm = 38 },
+   280	        [2025] = new EntfernungspauschaleRate { FirstTierKm = 20, FirstTierCentsPerKm = 30, BeyondTierCentsPerKm = 38 },
+   281	        [2026] = new EntfernungspauschaleRate { FirstTierKm = 20, FirstTierCentsPerKm = 30, BeyondTierCentsPerKm = 38 },
+   282	    };
+   283	
+   284	    /// <summary>
+   285	    /// Homeoffice-Tagespauschale rate by year: €5/day (max 120 days) through
+   286	    /// 2022, €6/day (max 210 days) from 2023 onward.
+   287	    /// </summary>
+   288	    public static readonly Dictionary<int, TagespauschaleRate> TagespauschaleByYear = new()
+   289	    {
+   290	        [2022] = new TagespauschaleRate { CentsPerDay = 500, MaxDays = 120 },
+   291	        [2023] = new TagespauschaleRate { CentsPerDay = 600, MaxDays = 210 },
+   292	        [2024] = new TagespauschaleRate { CentsPerDay = 600, MaxDays = 210 },
+   293	        [2025] = new TagespauschaleRate { CentsPerDay = 600, MaxDays = 210 },
+   294	        [2026] = new TagespauschaleRate { CentsPerDay = 600, MaxDays = 210 },
+   295	    };
+   296	}
