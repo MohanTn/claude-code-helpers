@@ -1,5 +1,0 @@
-[13:51:36] post-edit: build errors in /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Import/TaxCalculator.cs
-[13:51:50] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/api/tax.ts
-[13:52:02] edit-guard: architecture hint for /home/mohan/REPO/finance-analyser/frontend/src/components/IncomeTaxDashboard.tsx
-[13:53:18] bash-post: trimmed 350-line output, saved to /home/mohan/.claude/hooks/state/logs/1782042798222861500.log
-[13:53:26] bash-post: trimmed 215-line output, saved to /home/mohan/.claude/hooks/state/logs/1782042806616576974.log

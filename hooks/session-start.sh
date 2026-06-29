@@ -34,6 +34,22 @@ if [ "$needs_regen" = "1" ]; then
       echo "### package.json scripts"
       jq -r '.name as $n | "name: \($n)", (.scripts // {} | to_entries[] | "  \(.key): \(.value)")' "$proj_cwd/package.json" 2>/dev/null
     fi
+    # .NET projects
+    csproj=$(find "$proj_cwd" -maxdepth 3 -name "*.csproj" 2>/dev/null | head -5)
+    if [ -n "$csproj" ]; then
+      echo "### .NET projects"
+      printf '%s\n' "$csproj" | while read -r p; do
+        name=$(basename "$p")
+        pkgs=$(grep -oP '(?<=Include=")[^"]+' "$p" 2>/dev/null | head -8 | paste -sd ', ')
+        echo "  $name — packages: ${pkgs:-none}"
+      done
+    fi
+    # Docker Compose
+    if [ -f "$proj_cwd/docker-compose.yml" ] || [ -f "$proj_cwd/docker-compose.yaml" ]; then
+      echo "### docker-compose services"
+      yq e '.services | keys | .[]' "$proj_cwd/docker-compose.yml" 2>/dev/null \
+        || grep -E '^\s{2}[a-zA-Z]' "$proj_cwd/docker-compose.yml" 2>/dev/null | sed 's/://' | head -10
+    fi
     echo "### Top-level entries"
     ls -1 "$proj_cwd" 2>/dev/null | head -20
   } > "$digest" 2>/dev/null

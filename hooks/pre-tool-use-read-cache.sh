@@ -8,8 +8,10 @@ file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null
 [ -z "$file" ] && exit 0
 [ ! -f "$file" ] && exit 0
 
-# 1.1 — duplicate-read cache
-cache_key=$(printf '%s' "$file" | md5sum | cut -d' ' -f1)
+# 1.1 — duplicate-read cache (keyed on path + offset + limit so different sections don't collide)
+offset=$(printf '%s' "$input" | jq -r '.tool_input.offset // "0"' 2>/dev/null)
+limit=$(printf '%s' "$input" | jq -r '.tool_input.limit // "all"' 2>/dev/null)
+cache_key=$(printf '%s|%s|%s' "$file" "$offset" "$limit" | md5sum | cut -d' ' -f1)
 cache_file="$state_dir/read_${cache_key}"
 current_hash=$(md5sum "$file" 2>/dev/null | cut -d' ' -f1)
 
@@ -20,8 +22,9 @@ if [ -n "$current_hash" ] && [ -f "$cache_file" ] && [ "$(cat "$cache_file" 2>/d
 fi
 [ -n "$current_hash" ] && echo "$current_hash" > "$cache_file" 2>/dev/null
 
-# 1.5 — read-before-grep nudge (only once per file per session)
-nudge_file="$state_dir/nudged_${cache_key}"
+# 1.5 — read-before-grep nudge (only once per file per session, file-key not section-key)
+file_key=$(printf '%s' "$file" | md5sum | cut -d' ' -f1)
+nudge_file="$state_dir/nudged_${file_key}"
 if [ ! -f "$nudge_file" ]; then
   size=$(wc -l < "$file" 2>/dev/null || echo 0)
   has_range=$(printf '%s' "$input" | jq -r '.tool_input.offset // .tool_input.limit // empty' 2>/dev/null)

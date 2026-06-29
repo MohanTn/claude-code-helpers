@@ -1,6 +1,0 @@
-rm -f ~/.claude/hooks/state/logs/*.log
-rm -f /tmp/dotnet_new.log /tmp/dotnet_build1.log /tmp/read_trim_out.txt /tmp/read_trim_err.txt
-echo "---final settings.json---"
-cat ~/.claude/settings.json
-echo "---final hooks dir---"
-ls ~/.claude/hooks/

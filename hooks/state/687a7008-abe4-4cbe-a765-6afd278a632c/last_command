@@ -1,1 +1,0 @@
-echo "=== PdfTextExtractor.cs ===" && cat /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Parsers/PdfTextExtractor.cs 2>/dev/null | head -80; echo "=== schema.sql tail (last 80 lines) ===" && tail -80 /home/mohan/REPO/finance-analyser/backend-dotnet/src/FinanceAnalyser.Data/schema.sql

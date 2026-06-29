@@ -29,6 +29,7 @@ fi
 
 # 5.1/5.2 — architecture/pattern hints, one-shot per file per session
 [ -z "$file" ] && exit 0
+[[ "$file" == *"node_modules"* ]] && exit 0
 case "$file" in
   *.cs|*.ts|*.tsx) ;;
   *) exit 0 ;;
@@ -43,7 +44,7 @@ if [ -n "$hint" ]; then
   touch "$hinted_file" 2>/dev/null
   log "edit-guard: architecture hint for $file"
   echo "Architecture/design-pattern reminder for $(basename "$file"): $hint" >&2
-  exit 2
+  exit 1
 fi
 
 exit 0

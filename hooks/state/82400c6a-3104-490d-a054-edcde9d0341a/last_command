@@ -1,1 +1,0 @@
-cd /tmp && node verify_income_tax2.mjs 2>&1

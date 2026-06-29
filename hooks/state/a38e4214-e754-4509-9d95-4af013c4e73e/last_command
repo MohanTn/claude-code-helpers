@@ -1,1 +1,0 @@
-grep -rn "ltv_ratio" /home/mohan/REPO/finance-analyser/src /home/mohan/REPO/finance-analyser/frontend/src 2>/dev/null

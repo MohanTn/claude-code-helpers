@@ -36,7 +36,8 @@ printf '%s' "$count" > "$streak_file" 2>/dev/null
 if [ "$count" -ge 8 ] && [ ! -f "$nudged_file" ]; then
   touch "$nudged_file" 2>/dev/null
   log "search-trim: nudge sent after $count search calls this session"
-  jq -n '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: "This session has made several Grep/Glob calls in the main thread. For broad, open-ended exploration (more than a couple of targeted lookups), consider delegating to the Explore subagent instead — it keeps the raw search results out of this context."}}'
+  echo "This session has made $count Grep/Glob calls in the main thread. For broad, open-ended exploration, consider delegating to the Explore subagent — it keeps raw search results out of this context." >&2
+  exit 1
 fi
 
 exit 0
