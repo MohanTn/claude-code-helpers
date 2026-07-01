@@ -44,7 +44,7 @@ CREDENTIALS = CLAUDE_DIR / ".credentials.json"
 USAGE_CACHE = CLAUDE_DIR / ".statusline-usage-cache.json"
 
 CONTEXT_WINDOW = int(os.environ.get("CLAUDE_CONTEXT_WINDOW", 200_000))
-USAGE_TTL = int(os.environ.get("CLAUDE_USAGE_TTL", 60))   # seconds before refresh
+USAGE_TTL = int(os.environ.get("CLAUDE_USAGE_TTL", 5))    # seconds before refresh
 HTTP_TIMEOUT = int(os.environ.get("CLAUDE_USAGE_HTTP_TIMEOUT", 5))
 
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
