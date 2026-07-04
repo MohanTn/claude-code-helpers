@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstraps this repo's Claude Code / tmux / Neovim setup onto the current
+# Bootstraps this repo's Claude Code / Tmux / Neovim / Pi setup onto the current
 # machine: installs whatever required packages are missing (skips ones
 # already present), then symlinks each config item into place. Safe to
 # re-run: already-linked items are skipped, and any pre-existing real
@@ -125,6 +125,8 @@ link "$SCRIPT_DIR/claude/commands"            "$HOME/.claude/commands"
 link "$SCRIPT_DIR/claude/CLAUDE.md"           "$HOME/.claude/CLAUDE.md"
 link "$SCRIPT_DIR/tmux/tmux.conf"             "$HOME/.tmux.conf"
 link "$SCRIPT_DIR/nvim"                       "$HOME/.config/nvim"
+link "$SCRIPT_DIR/pi/agent/extensions/hooks" "$HOME/.pi/agent/extensions/hooks"
+link "$SCRIPT_DIR/pi/agent/extensions/pipeline-panel" "$HOME/.pi/agent/extensions/pipeline-panel"
 
 echo
 echo "Done. If anything was migrated above, review it with 'git status' in"

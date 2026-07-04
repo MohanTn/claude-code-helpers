@@ -1,5 +1,4 @@
 {
-  "model": "sonnet",
   "hooks": {
     "SessionStart": [
       {
@@ -91,26 +90,6 @@
             "timeout": 25
           }
         ]
-      },
-      {
-        "matcher": "Grep|Glob",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/post-tool-use-search-trim.sh\"",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/post-tool-use-read-trim.sh\"",
-            "timeout": 10
-          }
-        ]
       }
     ],
     "PreCompact": [
@@ -158,5 +137,6 @@
   },
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
-  "theme": "dark"
+  "theme": "dark",
+  "model": "claude-fable-5[1m]"
 }
