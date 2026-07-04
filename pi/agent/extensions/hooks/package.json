@@ -1,0 +1,15 @@
+{
+  "name": "pi-hooks",
+  "private": true,
+  "description": "Pi extension ported from Claude Code hooks: guards, caches, type-checks, architecture hints, YAGNI injection",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "file:../../../../../../../../usr/local/lib/node_modules/@earendil-works/pi-coding-agent",
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
+  }
+}

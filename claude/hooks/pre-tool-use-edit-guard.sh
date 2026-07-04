@@ -43,8 +43,11 @@ hint=$(node "$HOOKS_HOME/lib/match-glob.js" "$HOOKS_HOME/config/architecture-hin
 if [ -n "$hint" ]; then
   touch "$hinted_file" 2>/dev/null
   log "edit-guard: architecture hint for $file"
+  # exit 1 only surfaces stderr to the user, never to Claude. exit 2 blocks this
+  # call and feeds the reason back to Claude, who retries — the touch above
+  # already marked this file hinted, so the retry passes straight through.
   echo "Architecture/design-pattern reminder for $(basename "$file"): $hint" >&2
-  exit 1
+  exit 2
 fi
 
 exit 0

@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# PreCompact — 1.4 snapshot file paths touched via Edit/Write, from the transcript
+# PreCompact — clear the read-cache: after compaction the transcript summary no
+# longer contains file contents, so a cached "already read, unchanged" hash would
+# wrongly tell Claude to reuse content it can no longer see.
 input=$(cat)
 export HOOK_INPUT="$input"
 source "$HOME/.claude/hooks/lib/common.sh"
 
-transcript=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
-out="$HOOKS_HOME/state/pre-compact-$(date +%s).json"
-if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-  jq -c 'select(.message.content[]?.input.file_path? != null) | .message.content[].input.file_path' \
-    "$transcript" 2>/dev/null | sort -u > "$out" 2>/dev/null
-  log "pre-compact: snapshot written to $out"
-fi
+rm -f "$state_dir"/read_* 2>/dev/null
+log "pre-compact: cleared read cache"
 exit 0

@@ -16,3 +16,15 @@ state_dir="$HOOKS_HOME/state/${session_id}"
 mkdir -p "$state_dir" 2>/dev/null || true
 
 log() { printf '[%(%H:%M:%S)T] %s\n' -1 "$*" >> "${state_dir}/hook.log" 2>/dev/null || true; }
+
+# Shared by pre-tool-use-bash-guard.sh and post-tool-use-bash.sh so a failure
+# recorded under one signature is always looked up under the same signature.
+# Strips absolute-path tokens (word-boundary '/', not slashes mid-token like
+# "host:3000/path") and digits, so repeats differing only in temp paths,
+# timestamps, or build IDs normalize to the same key.
+normalize_cmd() {
+  printf '%s' "$1" \
+    | sed -E 's#(^|[[:space:]])/[^[:space:]]*#\1#g' \
+    | sed -E 's/[0-9]+//g' \
+    | tr -s ' '
+}

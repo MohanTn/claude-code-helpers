@@ -1,0 +1,17 @@
+{
+  "branch": "pipeline-worker/tmp-ec6f446a",
+  "targetBranch": "main",
+  "worktreePath": "/tmp/pipeline-worker-gEPqAg/worktree",
+  "attempt": 0,
+  "phase": "diff",
+  "startedAt": "2026-07-04T21:40:21.344Z",
+  "updatedAt": "2026-07-04T21:40:21.344Z",
+  "history": [
+    {
+      "at": "2026-07-04T21:40:21.344Z",
+      "phase": "diff",
+      "level": "info",
+      "message": "Created worktree at /tmp/pipeline-worker-gEPqAg/worktree (temp branch pipeline-worker/tmp-ec6f446a)"
+    }
+  ]
+}

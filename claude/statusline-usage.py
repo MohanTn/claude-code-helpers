@@ -248,6 +248,12 @@ def _window_segment(label: str, window: dict | None) -> str:
     return segment(label, pct, value, usage_color(pct))
 
 
+def cwd_folder(payload: dict) -> str:
+    """Basename of the current working directory (falls back to os.getcwd())."""
+    cwd = payload.get("cwd") or os.getcwd()
+    return os.path.basename(cwd.rstrip(os.sep)) or cwd
+
+
 def build_status(payload: dict) -> str:
     model = (payload.get("model") or {}).get("display_name") or "claude"
 
@@ -259,7 +265,9 @@ def build_status(payload: dict) -> str:
     h5_seg = _window_segment("5h", usage.get("five_hour"))
     wk_seg = _window_segment("wk", usage.get("seven_day"))
 
-    return f" {C_CORAL}{model}{C_RESET} {SEP} {ctx_seg} {SEP} {h5_seg} {SEP} {wk_seg}"
+    dir_seg = f"{C_MUTED}dir {C_RESET}{C_CORAL}{cwd_folder(payload)}{C_RESET}"
+
+    return f" {C_CORAL}{model}{C_RESET} {SEP} {ctx_seg} {SEP} {h5_seg} {SEP} {wk_seg} {SEP} {dir_seg}"
 
 
 def main() -> None:

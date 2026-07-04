@@ -1,0 +1,17 @@
+{
+  "branch": "pipeline-worker/tmp-f690b086",
+  "targetBranch": "main",
+  "worktreePath": "/tmp/pipeline-worker-M56kIB/worktree",
+  "attempt": 0,
+  "phase": "diff",
+  "startedAt": "2026-07-04T21:52:33.028Z",
+  "updatedAt": "2026-07-04T21:52:33.028Z",
+  "history": [
+    {
+      "at": "2026-07-04T21:52:33.028Z",
+      "phase": "diff",
+      "level": "info",
+      "message": "Created worktree at /tmp/pipeline-worker-M56kIB/worktree (temp branch pipeline-worker/tmp-f690b086)"
+    }
+  ]
+}

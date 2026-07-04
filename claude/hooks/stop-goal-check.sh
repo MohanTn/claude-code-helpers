@@ -16,11 +16,15 @@ already_forced=$(printf '%s' "$input" | jq -r '.stop_hook_active // false' 2>/de
 transcript=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
 goal=$(cat "$goal_file" 2>/dev/null)
 
-# Grep the full assistant text stream — not tail -1, which only checked the final line
-# and missed GOAL_CHECK: when a closing sentence followed it.
+# Scope to assistant text after the most recent user message — same pattern as
+# pre-tool-use-goal-capture.sh's scan — so a GOAL_CHECK: from an earlier turn
+# can't satisfy this turn's gate.
 found_check=0
 if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-  jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' \
+  last_user_line=$(jq -c 'select(.type=="user") | input_line_number' "$transcript" 2>/dev/null | tail -1)
+  last_user_line="${last_user_line:-0}"
+  jq -r --argjson ln "$last_user_line" \
+    'select(.type=="assistant" and input_line_number > $ln) | .message.content[]? | select(.type=="text") | .text' \
     "$transcript" 2>/dev/null | grep -q "GOAL_CHECK:" && found_check=1
 fi
 

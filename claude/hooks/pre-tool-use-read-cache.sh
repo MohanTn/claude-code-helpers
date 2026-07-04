@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse: Read — 1.1 duplicate-read cache + 1.5 read-before-grep nudge
+# PreToolUse: Read — 1.1 duplicate-read cache + 1.5 unbounded-large-read guard
 input=$(cat)
 export HOOK_INPUT="$input"
 source "$HOME/.claude/hooks/lib/common.sh"
@@ -22,18 +22,15 @@ if [ -n "$current_hash" ] && [ -f "$cache_file" ] && [ "$(cat "$cache_file" 2>/d
 fi
 [ -n "$current_hash" ] && echo "$current_hash" > "$cache_file" 2>/dev/null
 
-# 1.5 — read-before-grep nudge (only once per file per session, file-key not section-key)
-file_key=$(printf '%s' "$file" | md5sum | cut -d' ' -f1)
-nudge_file="$state_dir/nudged_${file_key}"
-if [ ! -f "$nudge_file" ]; then
-  size=$(wc -l < "$file" 2>/dev/null || echo 0)
-  has_range=$(printf '%s' "$input" | jq -r '.tool_input.offset // .tool_input.limit // empty' 2>/dev/null)
-  if [ "$size" -gt 1500 ] && [ -z "$has_range" ]; then
-    touch "$nudge_file" 2>/dev/null
-    log "read-nudge: $file has $size lines, no offset/limit"
-    echo "File has ${size} lines and no offset/limit was given. Consider Grep-ing for the relevant symbol first, or reading a specific range." >&2
-    exit 2
-  fi
+# 1.5 — unbounded-large-read guard: block every time, not one-shot, since this
+# runs before the read happens and a PostToolUse hook can only append to output
+# that's already in context, never remove it.
+size=$(wc -l < "$file" 2>/dev/null || echo 0)
+has_range=$(printf '%s' "$input" | jq -r '.tool_input.offset // .tool_input.limit // empty' 2>/dev/null)
+if [ "$size" -gt 1500 ] && [ -z "$has_range" ]; then
+  log "read-guard: blocked unbounded read of $file ($size lines)"
+  echo "File has ${size} lines and no offset/limit was given. Grep for the relevant symbol first, or read a specific range." >&2
+  exit 2
 fi
 
 exit 0

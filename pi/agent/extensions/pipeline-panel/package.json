@@ -1,0 +1,20 @@
+{
+  "name": "pipeline-panel",
+  "private": true,
+  "description": "pi extension: full-screen dashboard for launching and watching pipeline-worker runs (worktree, MR/PR, CI) from inside pi",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "file:../../../../../../../../usr/local/lib/node_modules/@earendil-works/pi-coding-agent",
+    "@types/node": "^26.1.0",
+    "tsx": "^4.19.0",
+    "typescript": "^6.0.3"
+  }
+}

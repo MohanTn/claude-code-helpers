@@ -7,8 +7,12 @@ source "$HOME/.claude/hooks/lib/common.sh"
 file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [ -z "$file" ] && exit 0
 
-# 2.1 — dirty flag: every successful Edit/Write invalidates the Bash dedup cache (unconditional, always do this first)
-touch "$state_dir/dirty_since_last_command" 2>/dev/null
+# 2.1 — edit generation counter: every successful Edit/Write advances this so the
+# Bash dedup/failure-memory guards can tell "no changes since X" apart per-command
+# instead of via a single global flag any unrelated Bash call would clear.
+gen_file="$state_dir/edit_gen"
+gen=$(( $(cat "$gen_file" 2>/dev/null || echo 0) + 1 ))
+printf '%s' "$gen" > "$gen_file" 2>/dev/null
 
 file_dir=$(dirname "$file")
 in_git_repo=0
