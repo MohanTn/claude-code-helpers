@@ -25,26 +25,6 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/pre-tool-use-read-cache.sh\"",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/pre-tool-use-bash-guard.sh\"",
-            "timeout": 5
-          }
-        ]
-      },
-      {
         "matcher": "Edit|Write",
         "hooks": [
           {
@@ -72,37 +52,17 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/post-tool-use-bash.sh\"",
-            "timeout": 10
-          }
-        ]
-      },
-      {
         "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
             "command": "bash \"$HOME/.claude/hooks/post-tool-use-edit.sh\"",
-            "timeout": 25
+            "timeout": 45
           }
         ]
       }
     ],
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/pre-compact.sh\"",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
+    "PreCompact": [],
     "Stop": [
       {
         "hooks": [
@@ -110,11 +70,6 @@
             "type": "command",
             "command": "bash \"$HOME/.claude/hooks/stop-goal-check.sh\"",
             "timeout": 8
-          },
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/stop-ding.sh\"",
-            "timeout": 5
           }
         ]
       }

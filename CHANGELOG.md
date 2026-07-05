@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 
+- Refactors the hooks system by introducing test-hook.sh (a comprehensive testing framework), sonar_lite.py (unified static analysis for TS/JS/C#), and removing less-critical hooks (bash-guard, read-cache, pre-compact, post-bash, stop-ding, stop-speak). Consolidates post-tool-use-edit to use sonar_lite instead of separate linting and citation checks.
 - This change attempts to exclude pipeline-worker operational state files from git, but contains a critical typo in .gitignore that prevents the actual directory from being ignored. Also includes configuration changes to Claude settings and tmux keybindings.
 
 ### Added
