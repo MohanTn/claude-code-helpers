@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format is based on 
 ### Changed
 
 - Updated pipeline-worker run.lock with new process ID and removed two obsolete temporary state files from prior worktree sessions
+- This change attempts to exclude pipeline-worker operational state files from git, but contains a critical typo in .gitignore that prevents the actual directory from being ignored. Also includes configuration changes to Claude settings and tmux keybindings.
 
 ### Added
 
