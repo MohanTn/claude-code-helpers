@@ -24,11 +24,8 @@ declare -A HOOK_INFO=(
   [pre-tool-use-edit-guard.sh]="PreToolUse (Edit/Write)::block no-op edits/writes"
   [pre-tool-use-goal-capture.sh]="PreToolUse (*)::capture the stated GOAL: line from the transcript"
   [pre-tool-use-loop-breaker.sh]="PreToolUse (*)::block 3rd consecutive identical tool call"
-  [post-tool-use-edit.sh]="PostToolUse (Edit/Write)::import/type-check/build gate after edits"
-  [pre-compact.sh]="PreCompact::clear the read cache"
+  [post-tool-use-edit.sh]="PostToolUse (Edit/Write)::import/type-check/build/sonar-lite gate after edits"
   [stop-goal-check.sh]="Stop::block stop until GOAL_CHECK: was stated"
-  [stop-speak.sh]="Stop::speak the goal + final summary aloud"
-  [stop-ding.sh]="Stop::play a completion sound"
   [session-end-cleanup.sh]="SessionEnd::prune stale hook state"
 )
 
@@ -58,16 +55,9 @@ default_payload() {
         '{session_id:$sid, cwd:$cwd, hook_event_name:"PostToolUse", tool_name:"Edit",
           tool_input:{file_path:"/tmp/example.md"}}'
       ;;
-    pre-compact.sh)
-      jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
-        '{session_id:$sid, cwd:$cwd, hook_event_name:"PreCompact", trigger:"manual"}'
-      ;;
-    stop-goal-check.sh | stop-speak.sh)
+    stop-goal-check.sh)
       jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
         '{session_id:$sid, cwd:$cwd, hook_event_name:"Stop", transcript_path:"/nonexistent/transcript.jsonl", stop_hook_active:false}'
-      ;;
-    stop-ding.sh)
-      echo '{}'
       ;;
     session-end-cleanup.sh)
       jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
@@ -212,16 +202,8 @@ cmd_selftest() {
     "$(jq -n --arg cwd "$cwd" '{session_id:"selftest", cwd:$cwd, transcript_path:"/nonexistent", stop_hook_active:false}')" \
     0
 
-  expect_exit "pre-compact clears the read cache cleanly" \
-    pre-compact.sh \
-    "$(jq -n --arg cwd "$cwd" '{session_id:"selftest", cwd:$cwd}')" \
-    0
-
   expect_exit "session-end-cleanup runs cleanly" \
     session-end-cleanup.sh '{}' 0
-
-  expect_exit "stop-ding runs cleanly" \
-    stop-ding.sh '{}' 0
 
   rm -rf "${HOOKS_DIR:?}/state/selftest"
 

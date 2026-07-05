@@ -77,6 +77,17 @@ else
   else
     ensure_bin fd fd
   fi
+
+  # Pi coding agent CLI — not in any OS package manager, only npm. Version pinned
+  # to what's currently vetted on this machine; bump deliberately when upgrading.
+  if command -v pi >/dev/null 2>&1; then
+    echo "= pi already installed"
+  elif command -v npm >/dev/null 2>&1; then
+    echo "> installing pi (@earendil-works/pi-coding-agent@0.80.3)"
+    npm install -g @earendil-works/pi-coding-agent@0.80.3
+  else
+    echo "! npm not available; install the pi CLI manually: npm install -g @earendil-works/pi-coding-agent" >&2
+  fi
 fi
 
 if command -v nvim >/dev/null 2>&1; then
