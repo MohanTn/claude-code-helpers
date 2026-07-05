@@ -1,2 +1,3 @@
 claude/hooks/state/
 .pipelin-worker/**
+.pipeline-worker/
