@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse: Edit|Write — 2.2 no-op guard + 5.1/5.2 architecture hints
+# PreToolUse: Edit|Write — 2.2 no-op guard
 input=$(cat)
 export HOOK_INPUT="$input"
 source "$HOME/.claude/hooks/lib/common.sh"
@@ -25,29 +25,6 @@ if [ "$tool_name" = "Write" ]; then
       exit 2
     fi
   fi
-fi
-
-# 5.1/5.2 — architecture/pattern hints, one-shot per file per session
-[ -z "$file" ] && exit 0
-[[ "$file" == *"node_modules"* ]] && exit 0
-case "$file" in
-  *.cs|*.ts|*.tsx) ;;
-  *) exit 0 ;;
-esac
-
-hint_key=$(printf '%s' "$file" | md5sum | cut -d' ' -f1)
-hinted_file="$state_dir/hinted_${hint_key}"
-[ -f "$hinted_file" ] && exit 0
-
-hint=$(node "$HOOKS_HOME/lib/match-glob.js" "$HOOKS_HOME/config/architecture-hints.json" "$file" 2>/dev/null)
-if [ -n "$hint" ]; then
-  touch "$hinted_file" 2>/dev/null
-  log "edit-guard: architecture hint for $file"
-  # exit 1 only surfaces stderr to the user, never to Claude. exit 2 blocks this
-  # call and feeds the reason back to Claude, who retries — the touch above
-  # already marked this file hinted, so the retry passes straight through.
-  echo "Architecture/design-pattern reminder for $(basename "$file"): $hint" >&2
-  exit 2
 fi
 
 exit 0

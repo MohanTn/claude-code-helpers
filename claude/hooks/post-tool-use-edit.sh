@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PostToolUse: Edit|Write — 2.1 dirty-flag + 3.1 symbol-existence + 3.2 type-check gate + 3.4 citation check
+# PostToolUse: Edit|Write — 2.1 dirty-flag + 3.1 symbol-existence + 3.2 type-check gate + 3.5 build gate
 input=$(cat)
 export HOOK_INPUT="$input"
 source "$HOME/.claude/hooks/lib/common.sh"
@@ -75,6 +75,23 @@ case "$file" in
       fi
     fi
   fi
+
+  # 3.6 — sonar-lite: ESLint + eslint-plugin-sonarjs static analysis
+  sonar_output=$(timeout 20 python3 "$HOOKS_HOME/sonar_lite.py" "$file")
+  if [ "$?" = "1" ]; then
+    log "post-edit: sonar-lite findings in $file"
+    printf '%s\n' "$sonar_output" >&2
+    exit 2
+  fi
+  ;;
+*.js|*.jsx)
+  # 3.6 — sonar-lite: ESLint + eslint-plugin-sonarjs static analysis
+  sonar_output=$(timeout 20 python3 "$HOOKS_HOME/sonar_lite.py" "$file")
+  if [ "$?" = "1" ]; then
+    log "post-edit: sonar-lite findings in $file"
+    printf '%s\n' "$sonar_output" >&2
+    exit 2
+  fi
   ;;
 *.cs)
   # 3.5 — dotnet build gate, the C# analogue of the tsc gate above. There's no
@@ -108,29 +125,13 @@ case "$file" in
       fi
     fi
   fi
-  ;;
-*.md|*.mdx|*.txt)
-  if [ "$in_git_repo" = "1" ]; then
-    # 3.4 — path/citation cross-checker
-    repo_root=$(git -C "$file_dir" rev-parse --show-toplevel 2>/dev/null)
-    added=$(git -C "$file_dir" diff -- "$file" 2>/dev/null | grep '^+' | grep -oE '[a-zA-Z0-9_./-]+\.(ts|tsx|js|py|sh|json):[0-9]+')
-    while IFS= read -r ref; do
-      [ -z "$ref" ] && continue
-      path="${ref%%:*}"
-      line="${ref##*:}"
-      full="${repo_root:-$file_dir}/$path"
-      if [ ! -f "$full" ]; then
-        log "post-edit: stale citation '$path' in $file"
-        echo "Referenced file '$path' does not exist." >&2
-        exit 2
-      fi
-      total=$(wc -l < "$full" 2>/dev/null || echo 0)
-      if [ "$line" -gt "$total" ]; then
-        log "post-edit: citation line $line exceeds $path length $total"
-        echo "Referenced line $line in '$path' exceeds file length ($total)." >&2
-        exit 2
-      fi
-    done <<< "$added"
+
+  # 3.6 — sonar-lite: dotnet format analyzers / SonarAnalyzer.CSharp static analysis
+  sonar_output=$(timeout 20 python3 "$HOOKS_HOME/sonar_lite.py" "$file")
+  if [ "$?" = "1" ]; then
+    log "post-edit: sonar-lite findings in $file"
+    printf '%s\n' "$sonar_output" >&2
+    exit 2
   fi
   ;;
 esac

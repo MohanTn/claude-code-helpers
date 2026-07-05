@@ -1,0 +1,60 @@
+{
+  "branch": "pipeline-worker/pipeline-worker-cleanup",
+  "targetBranch": "main",
+  "worktreePath": "/tmp/pipeline-worker-Yl1ktk/worktree",
+  "attempt": 2,
+  "phase": "done",
+  "startedAt": "2026-07-05T13:15:48.585Z",
+  "updatedAt": "2026-07-05T13:17:50.929Z",
+  "history": [
+    {
+      "at": "2026-07-05T13:15:48.585Z",
+      "phase": "diff",
+      "level": "info",
+      "message": "Created worktree at /tmp/pipeline-worker-Yl1ktk/worktree (temp branch pipeline-worker/tmp-0c689ec3)"
+    },
+    {
+      "at": "2026-07-05T13:16:05.684Z",
+      "phase": "intent",
+      "level": "info",
+      "message": "Captured intent; renamed to feature branch pipeline-worker/pipeline-worker-cleanup"
+    },
+    {
+      "at": "2026-07-05T13:16:05.685Z",
+      "phase": "checks",
+      "level": "info",
+      "message": "Checks passed ()"
+    },
+    {
+      "at": "2026-07-05T13:16:09.355Z",
+      "phase": "mr",
+      "level": "info",
+      "message": "Opened MR/PR https://github.com/MohanTn/claude-code-helpers/pull/4"
+    },
+    {
+      "at": "2026-07-05T13:16:09.361Z",
+      "phase": "watch",
+      "level": "info",
+      "message": "Started watching pipeline"
+    },
+    {
+      "at": "2026-07-05T13:16:25.951Z",
+      "phase": "watch",
+      "level": "info",
+      "message": "Merge conflicts detected; attempt 1/5 — merging origin/main into pipeline-worker/pipeline-worker-cleanup"
+    },
+    {
+      "at": "2026-07-05T13:16:58.230Z",
+      "phase": "watch",
+      "level": "info",
+      "message": "Merge conflicts detected; attempt 2/5 — merging origin/main into pipeline-worker/pipeline-worker-cleanup"
+    },
+    {
+      "at": "2026-07-05T13:17:50.929Z",
+      "phase": "done",
+      "level": "info",
+      "message": "No CI pipeline found for this MR/PR — nothing to watch"
+    }
+  ],
+  "mrIid": 4
+}
