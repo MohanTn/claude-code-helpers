@@ -1,4 +1,4 @@
-{ ... }:
+{ username, ... }:
 
 {
   imports = [
@@ -6,16 +6,16 @@
     ./zsh.nix
     ./git.nix
     ./claude.nix
-    ./tmux.nix
     ./nvim.nix
     ./pi.nix
   ];
 
-  # The whole setup assumes this user and the repo checked out at
-  # ~/REPO/claude-code-helpers (see nvim.nix). On a fresh WSL distro,
-  # create the user as "mohan" during setup.
-  home.username = "mohan";
-  home.homeDirectory = "/home/mohan";
+  # `username` comes from $USER, read impurely in flake.nix and threaded in
+  # via extraSpecialArgs, so this config works unmodified on any machine or
+  # account name. The repo itself still needs to live at
+  # ~/REPO/claude-code-helpers (see nvim.nix).
+  home.username = username;
+  home.homeDirectory = "/home/${username}";
 
   # Do not change after the first activation.
   home.stateVersion = "25.05";

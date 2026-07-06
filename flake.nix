@@ -1,5 +1,5 @@
 {
-  description = "Mohan's reproducible machine setup: Claude Code, zsh, git, tmux, Neovim, pi (Home Manager flake)";
+  description = "Mohan's reproducible machine setup: Claude Code, zsh, git, Neovim, pi (Home Manager flake)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
@@ -13,17 +13,22 @@
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
+      # Read at eval time so this flake works unmodified on any machine or
+      # account name; every nix invocation of it therefore needs --impure
+      # (bootstrap.sh, README, and the CI workflow all pass it).
+      username = builtins.getEnv "USER";
     in
     {
-      homeConfigurations."mohan" = home-manager.lib.homeManagerConfiguration {
+      homeConfigurations.${username} = home-manager.lib.homeManagerConfiguration {
         inherit pkgs;
+        extraSpecialArgs = { inherit username; };
         modules = [ ./nix/home.nix ];
       };
 
       checks.${system} = {
         # Building the activation package validates every module, file link,
         # and package reference without touching the running system.
-        home = self.homeConfigurations."mohan".activationPackage;
+        home = self.homeConfigurations.${username}.activationPackage;
 
         # The hooks' own regression suite, run in a sandbox HOME exactly the
         # way Claude Code invokes them (JSON payload on stdin).

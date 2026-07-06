@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 
+- The flake now dynamically reads the system username via `$USER` at eval time instead of being hardcoded to "mohan", making it work unchanged on any machine. All Nix invocations now require the `--impure` flag. Tmux and its configuration have been removed as an out-of-scope tool. Several unused LazyVim boilerplate files were deleted, and a file deletion keybinding was added to the Neovim file explorer.
 - Refactor machine bootstrap into `setup.sh` with three commands: default apply (setup or update), `doctor` for drift audit without changes, and `upgrade` for bumping dependencies. Adds comprehensive testing via a new flake check that validates shellcheck and exercises doctor against synthetic profiles.
 - Replaced `bootstrap.sh` with `setup.sh`, a single entry point for the machine lifecycle: the no-arg run installs Nix if missing and applies the Home Manager flake (also the update path; hand edits under `$HOME` are reverted with the edited copy kept as `*.hm-backup`), `setup.sh doctor` audits that every managed file is still served from the Nix store without changing anything, and `setup.sh upgrade` bumps flake inputs then applies. A new `setup-script` flake check shellchecks the script and unit-tests the doctor audit against a synthetic Home Manager profile.
 

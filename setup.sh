@@ -76,9 +76,9 @@ ensure_nix() {
 switch() {
   log "activating home configuration (files changed outside Nix are reverted, kept as *.hm-backup)"
   if command -v home-manager >/dev/null 2>&1; then
-    home-manager switch -b hm-backup --flake "$SCRIPT_DIR"
+    home-manager switch -b hm-backup --flake "$SCRIPT_DIR" --impure
   else
-    nix run "$HM_FLAKE" -- switch -b hm-backup --flake "$SCRIPT_DIR"
+    nix run "$HM_FLAKE" -- switch -b hm-backup --flake "$SCRIPT_DIR" --impure
   fi
 }
 
@@ -143,7 +143,7 @@ reminders() {
 
 Done. Reminders:
   * Every config change goes through this repo: edit here, re-run ./setup.sh,
-    commit once 'nix flake check' passes. Hand edits under $HOME are reverted
+    commit once 'nix flake check --impure' passes. Hand edits under $HOME are reverted
     on the next apply. 'setup.sh doctor' audits for such drift any time.
   * Secrets are NOT managed by this repo. Create ~/.zshrc.local with, e.g.:
       export PIPELINE_WORKER_GITHUB_TOKEN="..."
@@ -157,7 +157,7 @@ apply() {
   ensure_repo_location
   ensure_nix
   if [ -n "$(git -C "$SCRIPT_DIR" status --porcelain 2>/dev/null)" ]; then
-    info "repo has uncommitted changes; this apply includes them (run 'nix flake check' before committing)"
+    info "repo has uncommitted changes; this apply includes them (run 'nix flake check --impure' before committing)"
   fi
   switch
   ensure_login_shell
