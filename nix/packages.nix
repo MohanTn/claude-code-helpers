@@ -3,7 +3,6 @@
 {
   home.packages = with pkgs; [
     # toolchain the configs in this repo depend on
-    tmux
     neovim
     ripgrep # Telescope live-grep
     fd # Telescope file finder
@@ -12,7 +11,6 @@
     nodejs_22 # LazyVim LSP extras, pi extensions, npm global CLIs
     gcc # Treesitter parser builds
     gnumake
-    wl-clipboard # tmux copy-mode bindings (Wayland; WSL falls back to OSC52)
     curl
 
     # dev platforms

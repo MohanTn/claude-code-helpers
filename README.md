@@ -1,13 +1,12 @@
 # claude-code-helpers
 
-Reproducible machine setup as a Nix flake: Claude Code config, zsh + oh-my-zsh, git, tmux, Neovim (LazyVim), pi extensions, and every tool they depend on. Clone it on any Linux box or WSL distro, run one script, and the machine is set up the way I like it.
+Reproducible machine setup as a Nix flake: Claude Code config, zsh + oh-my-zsh, git, Neovim (LazyVim), pi extensions, and every tool they depend on. Clone it on any Linux box or WSL distro, run one script, and the machine is set up the way I like it.
 
 ```
 flake.nix     inputs (pinned nixpkgs + home-manager) and CI checks
 nix/          one Home Manager module per concern:
-              packages, zsh, git, claude, tmux, nvim, pi
+              packages, zsh, git, claude, nvim, pi
 claude/       ~/.claude/{settings.json,CLAUDE.md,hooks,skills,commands,statusline-usage.py}
-tmux/         ~/.tmux.conf
 nvim/         ~/.config/nvim (LazyVim)
 pi/           ~/.pi/agent/extensions
 setup.sh      single entry point: setup, apply/update, drift audit, input upgrade
@@ -15,7 +14,7 @@ setup.sh      single entry point: setup, apply/update, drift audit, input upgrad
 
 ## New machine (Linux or WSL)
 
-The config assumes the user is `mohan` and the repo lives at `~/REPO/claude-code-helpers` (on a fresh WSL distro, pick `mohan` as the username during setup).
+The repo must live at `~/REPO/claude-code-helpers`; the account name doesn't matter; `flake.nix` reads `$USER` at eval time (see `--impure` below), so it works unmodified under any username.
 
 ```
 git clone git@github.com:MohanTn/claude-code-helpers.git ~/REPO/claude-code-helpers
@@ -42,11 +41,11 @@ export PIPELINE_WORKER_GITHUB_TOKEN="github_pat_..."
 Configs are served read-only from the Nix store, so the workflow is: edit the file in this repo, then apply and commit. `setup.sh` is also the update command; re-running it is a no-op when nothing changed.
 
 ```
-./setup.sh          # apply repo changes (wraps home-manager switch)
+./setup.sh          # apply repo changes (wraps `home-manager switch --impure`)
 git add -A && git commit -m "..." && git push
 ```
 
-Every change is forced through Nix: the live files under `$HOME` are read-only store symlinks, and each `./setup.sh` run reverts anything that was replaced by hand (the hand-edited copy is kept as `*.hm-backup`). To audit without changing anything:
+Every change is forced through Nix: the live files under `$HOME` are read-only store symlinks, and each `./setup.sh` run reverts anything that was replaced by hand (the hand-edited copy is kept as `*.hm-backup`). `--impure` is required because the flake reads `$USER` at eval time (see `flake.nix`) instead of hardcoding an account name. To audit without changing anything:
 
 ```
 ./setup.sh doctor   # verify every managed config still points into the Nix store; exit 1 on drift
@@ -60,12 +59,12 @@ Two deliberate exceptions:
 Updating pinned packages:
 
 ```
-./setup.sh upgrade  # nix flake update + apply; review and commit flake.lock
+./setup.sh upgrade  # nix flake update + apply (--impure); review and commit flake.lock
 ```
 
 ## Testing
 
-`nix flake check` runs all CI gates locally: it builds the full home configuration, runs the hook regression suite, and lints + tests `setup.sh` (shellcheck plus doctor drift-audit cases against a synthetic Home Manager profile). The hooks can also be exercised directly:
+`nix flake check --impure` runs all CI gates locally: it builds the full home configuration, runs the hook regression suite, and lints + tests `setup.sh` (shellcheck plus doctor drift-audit cases against a synthetic Home Manager profile). The hooks can also be exercised directly:
 
 ```
 claude/hooks/test-hook.sh list                           # list hooks + what each does
@@ -79,5 +78,4 @@ Hook runtime state (session logs, loop counters, digests) lives under `~/.local/
 ## WSL notes
 
 * Zed (the GUI editor) needs WSLg, which is standard on Windows 11.
-* tmux copy-mode uses `wl-clipboard` on Wayland; on WSL, `set -g set-clipboard on` (OSC52) handles copying through the terminal instead.
 * `wslu` provides `wslview` for opening URLs and files in Windows.
