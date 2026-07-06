@@ -31,6 +31,20 @@ Secrets are never committed. Machine-local values go in `~/.zshrc.local`, which 
 export PIPELINE_WORKER_GITHUB_TOKEN="github_pat_..."
 ```
 
+## Pi agent
+
+`pi/agent/extensions/` holds two extensions for the [Pi coding agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) (`@earendil-works/pi-coding-agent`), symlinked into `~/.pi/agent/extensions/` by the Nix flake:
+
+- `hooks/` — a TypeScript port of the same guard/goal/loop-breaker behavior as `claude/hooks`, wired into Pi's extension lifecycle instead of Claude Code's hook events: session-start digest injection, GOAL capture + YAGNI/self-check prompting, edit/write no-op guards, import resolution + `tsc`/`dotnet build` gates, `sonar_lite.py` static analysis, and the consecutive-tool-call loop breaker. It intentionally excludes anything `claude/hooks` has since dropped (bash-command dedup, read caching, architecture hints, TTS/ding, pre-compact) — keep the two in sync when one changes.
+- `pipeline-panel/` — a full-screen dashboard extension for launching and watching `pipeline-worker` runs (worktree, MR/PR, CI) from inside Pi.
+
+Each extension has its own test suite (`node:test` + `tsx`):
+
+```
+cd pi/agent/extensions/hooks && npm install && npm test        # or: npm run typecheck
+cd pi/agent/extensions/pipeline-panel && npm install && npm test
+```
+
 ### Not managed by Nix (by design)
 
 * **Claude Code, pi, and the other npm CLIs** (`pipeline-worker`, `gemini-cli`, `freebuff`, `mcp-sonar-analysis`, `@github/copilot`): these self-update and move fast, so activation bootstraps them via their native installers only when missing (claude to `~/.local/bin`, npm globals to `~/.npm-global`).

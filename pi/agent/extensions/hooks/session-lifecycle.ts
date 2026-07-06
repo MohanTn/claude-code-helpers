@@ -191,13 +191,6 @@ export function setupSessionLifecycle(pi: ExtensionAPI): void {
     cachedDigest = null;
     digestCwd = null;
   });
-
-  pi.on("session_before_compact", async (_event, _ctx) => {
-    // Port of pre-compact.sh: snapshot touched files.
-    // In pi, file tracking is handled in-memory by edit-guard.ts.
-    // Let compaction proceed normally.
-    return undefined;
-  });
 }
 
 /** Retrieve the cached project digest for the given cwd (used by entry point for before_agent_start injection). */

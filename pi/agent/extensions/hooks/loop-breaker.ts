@@ -23,9 +23,14 @@ function getLoopState(ctx: ExtensionContext): LoopState {
   return stateMap.get(id)!;
 }
 
+/** Pure signature-counting rule: consecutive identical signatures increment, anything else resets to 1. */
+export function nextLoopCount(lastSig: string, sig: string, count: number): number {
+  return sig === lastSig ? count + 1 : 1;
+}
+
 export function setupLoopBreaker(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event, ctx) => {
-    // Skip for bash - let bash-guard handle that
+    // Skip for bash - claude/hooks no longer runs a bash-specific dedup guard either
     if (event.toolName === "bash") return undefined;
 
     // Generate signature from tool name + input (excluding timeout for bash)
@@ -33,11 +38,7 @@ export function setupLoopBreaker(pi: ExtensionAPI): void {
 
     const ls = getLoopState(ctx);
 
-    if (sig === ls.lastSig) {
-      ls.count += 1;
-    } else {
-      ls.count = 1;
-    }
+    ls.count = nextLoopCount(ls.lastSig, sig, ls.count);
     ls.lastSig = sig;
 
     // Persist to file state as well for visibility
