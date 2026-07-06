@@ -37,6 +37,48 @@
             bash "$HOME/.claude/hooks/test-hook.sh" selftest > "$out"
             cat "$out"
           '';
+
+        # setup.sh: lint it, then exercise the doctor drift audit against a
+        # synthetic Home Manager profile (clean, hand-edited, deleted).
+        setup-script = pkgs.runCommand "setup-script"
+          { nativeBuildInputs = [ pkgs.bash pkgs.shellcheck ]; }
+          ''
+            script=${./setup.sh}
+            bash -n "$script"
+            shellcheck "$script"
+
+            export HOME="$TMPDIR/home"
+            unset XDG_STATE_HOME
+            hf="$HOME/.local/state/nix/profiles/home-manager/home-files"
+            mkdir -p "$hf" "$HOME"
+            echo managed > "$TMPDIR/zshrc-src"
+            ln -s "$TMPDIR/zshrc-src" "$hf/.zshrc"
+            ln -s "$hf/.zshrc" "$HOME/.zshrc"
+
+            echo "-- doctor: no generation fails"
+            if HOME="$TMPDIR/empty-home" bash "$script" doctor; then
+              echo "expected doctor to fail without a generation" >&2; exit 1
+            fi
+
+            echo "-- doctor: clean home passes"
+            bash "$script" doctor
+
+            echo "-- doctor: hand-edited file fails"
+            rm "$HOME/.zshrc"
+            echo hacked > "$HOME/.zshrc"
+            if bash "$script" doctor; then
+              echo "expected doctor to fail on drifted file" >&2; exit 1
+            fi
+
+            echo "-- doctor: deleted managed file fails"
+            rm "$HOME/.zshrc"
+            if bash "$script" doctor; then
+              echo "expected doctor to fail on missing file" >&2; exit 1
+            fi
+
+            echo "all setup.sh checks passed" > "$out"
+            cat "$out"
+          '';
       };
     };
 }
