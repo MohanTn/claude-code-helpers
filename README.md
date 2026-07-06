@@ -10,7 +10,7 @@ claude/       ~/.claude/{settings.json,CLAUDE.md,hooks,skills,commands,statuslin
 tmux/         ~/.tmux.conf
 nvim/         ~/.config/nvim (LazyVim)
 pi/           ~/.pi/agent/extensions
-bootstrap.sh  new-machine entry point
+setup.sh      single entry point: setup, apply/update, drift audit, input upgrade
 ```
 
 ## New machine (Linux or WSL)
@@ -19,10 +19,10 @@ The config assumes the user is `mohan` and the repo lives at `~/REPO/claude-code
 
 ```
 git clone git@github.com:MohanTn/claude-code-helpers.git ~/REPO/claude-code-helpers
-~/REPO/claude-code-helpers/bootstrap.sh
+~/REPO/claude-code-helpers/setup.sh
 ```
 
-`bootstrap.sh` installs Nix (Determinate Systems installer) if missing, activates the Home Manager configuration (conflicting existing files are kept as `*.hm-backup`), and switches the login shell to zsh. Everything Nix-installed is pinned by `flake.lock`, so every machine gets identical versions.
+`setup.sh` installs Nix (Determinate Systems installer) if missing, activates the Home Manager configuration (conflicting existing files are kept as `*.hm-backup`), switches the login shell to zsh, and finishes with a drift audit. Everything Nix-installed is pinned by `flake.lock`, so every machine gets identical versions.
 
 ### Secrets (required after first run)
 
@@ -39,11 +39,17 @@ export PIPELINE_WORKER_GITHUB_TOKEN="github_pat_..."
 
 ## Making changes
 
-Configs are served read-only from the Nix store, so the workflow is: edit the file in this repo, then apply and commit.
+Configs are served read-only from the Nix store, so the workflow is: edit the file in this repo, then apply and commit. `setup.sh` is also the update command; re-running it is a no-op when nothing changed.
 
 ```
-home-manager switch --flake ~/REPO/claude-code-helpers
+./setup.sh          # apply repo changes (wraps home-manager switch)
 git add -A && git commit -m "..." && git push
+```
+
+Every change is forced through Nix: the live files under `$HOME` are read-only store symlinks, and each `./setup.sh` run reverts anything that was replaced by hand (the hand-edited copy is kept as `*.hm-backup`). To audit without changing anything:
+
+```
+./setup.sh doctor   # verify every managed config still points into the Nix store; exit 1 on drift
 ```
 
 Two deliberate exceptions:
@@ -54,12 +60,12 @@ Two deliberate exceptions:
 Updating pinned packages:
 
 ```
-nix flake update && home-manager switch --flake ~/REPO/claude-code-helpers
+./setup.sh upgrade  # nix flake update + apply; review and commit flake.lock
 ```
 
 ## Testing
 
-`nix flake check` runs both CI gates locally: it builds the full home configuration and runs the hook regression suite. The hooks can also be exercised directly:
+`nix flake check` runs all CI gates locally: it builds the full home configuration, runs the hook regression suite, and lints + tests `setup.sh` (shellcheck plus doctor drift-audit cases against a synthetic Home Manager profile). The hooks can also be exercised directly:
 
 ```
 claude/hooks/test-hook.sh list                           # list hooks + what each does

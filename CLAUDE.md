@@ -4,10 +4,10 @@ Personal machine setup as a Nix flake (standalone Home Manager, non-NixOS). The 
 
 ## Layout
 
-* `flake.nix` pins nixpkgs and home-manager (release-25.05) and defines two checks: building the home configuration, and the hook regression suite.
+* `flake.nix` pins nixpkgs and home-manager (release-25.05) and defines three checks: building the home configuration, the hook regression suite, and the `setup.sh` lint + doctor tests.
 * `nix/` holds one module per concern (`packages.nix`, `zsh.nix`, `git.nix`, `claude.nix`, `tmux.nix`, `nvim.nix`, `pi.nix`), all imported by `nix/home.nix`.
 * `claude/`, `tmux/`, `nvim/`, `pi/` hold the actual config content the modules deploy.
-* `bootstrap.sh` is the new-machine entry point (installs Nix, runs the first switch).
+* `setup.sh` is the single entry point: no-arg run does new-machine setup and applies config changes (wraps `home-manager switch`), `setup.sh doctor` audits that every managed file is still served from the Nix store, `setup.sh upgrade` bumps flake inputs then applies. Its lint + doctor tests run as the `setup-script` flake check.
 
 ## Rules for changes
 
