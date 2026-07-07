@@ -8,6 +8,7 @@ nix/          one Home Manager module per concern:
               packages, zsh, git, claude, copilot, nvim, pi
 claude/       ~/.claude/{settings.json,CLAUDE.md,hooks,skills,commands,statusline-usage.py}
 copilot/      ~/.copilot/hooks (Copilot CLI port of claude/hooks)
+zsh/          prompt.zsh: custom async prompt sourced by nix/zsh.nix
 nvim/         ~/.config/nvim (LazyVim)
 pi/           ~/.pi/agent/extensions
 setup.sh      single entry point: setup, apply/update, drift audit, input upgrade
@@ -31,6 +32,18 @@ Secrets are never committed. Machine-local values go in `~/.zshrc.local`, which 
 ```
 export PIPELINE_WORKER_GITHUB_TOKEN="github_pat_..."
 ```
+
+### Prompt
+
+`zsh/prompt.zsh` (sourced by `nix/zsh.nix`) is a from-scratch "phosphor CRT" prompt, not an oh-my-zsh theme: green-on-black, styled after old monochrome monitors, with a modern hint.
+
+* Shows the full working directory and git branch: 🌿 clean, 🔥 dirty, `↑N`/`↓N` for commits ahead/behind of upstream (pending push/pull). Git status is computed in a background job via zsh's `zle -F`, so a slow `git status` in a large repo never blocks typing; while it's pending, a spinner (`⠋⠙⠹...`) animates in its place, one frame per second (only actually visible in slow/large repos).
+* `RPROMPT` shows ✅/❌ based on the last command's exit status, plus `⏱ Ns` if it ran 3 seconds or longer.
+* The clock lives in the terminal's own window/tab title (updated every prompt) instead of repeating on every line.
+* Each field gets its own step on the same green phosphor ladder (user@host, separators, path, branch) rather than one flat shade, so the line stays scannable without leaving the monochrome palette; emoji are the one deliberate "modern" touch, since a real CRT never had color.
+* Opening a new interactive terminal prints a one-line typewriter-animated greeting.
+
+Edit `zsh/prompt.zsh` directly (plain zsh, no Nix escaping needed) and re-run `./setup.sh` to change it.
 
 ## Pi agent
 
