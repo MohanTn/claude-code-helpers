@@ -16,5 +16,6 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Added
 
+- Introduces a custom async zsh prompt with emoji git status, exit code indicators, and command duration tracking. Replaces robbyrussell theme. Fixes pip-tools Nix package reference and significantly expands README with setup procedures and configuration documentation.
 - Adds a complete shell port of claude/hooks for GitHub Copilot CLI, adapted to Copilot's camelCase JSON payload format and decision-on-stdout contract. Includes all guards (edit, loop, goal), gates (type-check, build), and state cleanup. Coupled with a new nix/copilot.nix module, flake check, and comprehensive README documentation.
 - Introduces a new Lua configuration module that enhances Neovim's Snacks file explorer with comprehensive mouse support: double-click to open/toggle files, ctrl-click for multi-selection, and right-click context menu with file operations (new, rename, copy, cut, paste, delete, open, refresh).
