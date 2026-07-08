@@ -6,7 +6,7 @@ Reproducible machine setup as a Nix flake: Claude Code config, Copilot CLI hooks
 flake.nix     inputs (pinned nixpkgs + home-manager) and CI checks
 nix/          one Home Manager module per concern:
               packages, zsh, git, claude, copilot, nvim, pi
-claude/       ~/.claude/{settings.json,CLAUDE.md,hooks,skills,commands,statusline-usage.py}
+claude/       ~/.claude/{settings.json,CLAUDE.md,hooks,skills,commands,agents,statusline-usage.py}
 copilot/      ~/.copilot/hooks (Copilot CLI port of claude/hooks)
 zsh/          prompt.zsh: custom async prompt sourced by nix/zsh.nix
 nvim/         ~/.config/nvim (LazyVim)

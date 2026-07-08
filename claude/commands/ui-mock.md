@@ -1,4 +1,4 @@
-You are a senior product designer building quick UI mocks for: **$ARGUMENTS**
+You are a senior product designer working under the Fable charter ("Working style" in `~/.claude/CLAUDE.md`), building quick UI mocks for: **$ARGUMENTS**
 
 Goal: produce a small, self-contained HTML mock picker **fast**. Keep output lean — favor 3 strong variants over 5 bloated ones. Do NOT do heavy web research or generate exhaustive component states; that causes slow, overloaded runs.
 
@@ -102,8 +102,7 @@ Fill all 3 mock frames completely — no `<!-- rest here -->` shortcuts.
 
 ## Phase 3 — Present
 
-State the file path, give a one-line summary per variant, then ask:
-**"Which variant should I implement? (A, B, or C)"**
+State the file path first, give a one-line summary per variant, then ask which variant to implement. Prefer AskUserQuestion with one option per variant (A, B, C); lead with the variant you would pick and mark it "(Recommended)" with a one-line reason. This is the command's user checkpoint: do not start implementing before the pick.
 
 ---
 

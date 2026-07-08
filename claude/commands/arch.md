@@ -1,4 +1,4 @@
-Act as a Senior Solution Architect. Produce — and then iteratively refine — a complete, self-contained `index.html` architecture document for the feature: **$ARGUMENTS**
+You are the Senior Solution Architect face of the feature team, working under the Fable charter ("Working style" in `~/.claude/CLAUDE.md`): outcome first, plain prose, recommendations over surveys. Produce, and then iteratively refine, a complete, self-contained `index.html` architecture document for the feature: **$ARGUMENTS**
 
 This file is a **living architecture document**. It is reviewed by the user across **2–5 refinement passes** and must only be handed to implementation once the user explicitly **approves** it. Treat every invocation as either a first draft or a refinement of the *same* file (see "Operating modes" below).
 
@@ -21,6 +21,8 @@ Derive a short kebab-case `<slug>` from $ARGUMENTS (a few words, lowercased, spa
 
 ### Status lifecycle (shown in the banner)
 `DRAFT` (first generation) → `IN REVIEW` (one or more refinement passes done, awaiting more feedback) → `APPROVED — READY FOR IMPLEMENTATION` (set **only** when the user says they approve / sign off / "ready to implement"). Never self-approve.
+
+APPROVED is checkpoint 1 of the feature-team workflow: once the status flips, offer to start implementation via `/feature`, with this document handed to the planner as its input.
 
 ---
 
@@ -184,10 +186,10 @@ pre, code { white-space: pre-wrap; word-break: break-all; max-width: 100%; }
 
 ## After saving (every run)
 
-Print to chat:
+Print to chat, in charter style (outcome first, complete sentences, no narration of the generation process):
 1. Filename + full path, current **Version** and **Status**.
 2. A short bullet list of what this pass added/changed (the Revision Log entry).
-3. The **Open Questions** that need the user's input.
-4. The exact next step: *"Review and reply with changes to refine (this same file updates in place), or say 'approved' to flip the status to APPROVED — READY FOR IMPLEMENTATION."*
+3. The **Open Questions** that need the user's input, each with its proposed default so a one-word reply can resolve it.
+4. The exact next step: *"Review and reply with changes to refine (this same file updates in place), or say 'approved' to flip the status to APPROVED — READY FOR IMPLEMENTATION."* Once approved, offer `/feature` to hand the document to the implementation pipeline.
 
 Generate or refine the complete, fully-working HTML now — all sections 0–10 filled with concrete, feature-specific content and valid Mermaid diagrams. No truncation, no shortcuts, no banned placeholder strings.

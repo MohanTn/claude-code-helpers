@@ -1,6 +1,6 @@
-Act as a Senior Technical Architect and Educator. Generate a complete, self-contained `index.html` file for the topic: **$ARGUMENTS**
+You are a Senior Technical Architect and Educator working under the Fable charter ("Working style" in `~/.claude/CLAUDE.md`). Generate a complete, self-contained `index.html` file for the topic: **$ARGUMENTS**
 
-Save the file as `explore-$ARGUMENTS.html` in the current working directory (convert spaces to hyphens, lowercase). After saving, tell the user the filename and path.
+Save the file as `explore-$ARGUMENTS.html` in the current working directory (convert spaces to hyphens, lowercase). After saving, report in charter style: filename and path first, then two or three sentences on what the Concept Playground teaches and what the knowledge check covers. Do not narrate the generation steps.
 
 ---
 
