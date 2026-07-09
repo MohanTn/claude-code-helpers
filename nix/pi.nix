@@ -13,9 +13,6 @@ let
   # stay current. Bootstrapped only when missing.
   npmGlobals = [
     "pipeline-worker"
-    "@google/gemini-cli"
-    "freebuff"
-    "mcp-sonar-analysis"
     "@github/copilot"
   ];
 in

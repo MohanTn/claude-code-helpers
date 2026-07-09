@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 
+- Removed three unused npm global packages (Google Gemini CLI, freebuff, mcp-sonar-analysis) and added smart path truncation to the zsh prompt. Long paths now display as "../last/three/dirs" instead of scrolling the prompt off-screen, while short paths display in full.
 - Replace the full Home Manager activation package build with a lightweight derivation evaluation that still validates all configuration but avoids building tens of GB of unused dependencies (zed-editor, dotnet-sdk). Uses `unsafeDiscardOutputDependency` on the derivation path to skip output dependencies while keeping instantiation checks.
 - This change introduces pnpm package manager support by adding it to base packages, configuring its global bin directory in PATH and PNPM_HOME environment variable. It also modernizes the GitHub Copilot CLI installation from a remote shell script to an npm-based install, and makes pi-coding-agent installation conditional with script safety controls.
 - `setup.sh` now folds any pre-existing `~/.zshrc`/`~/.zshenv` content into `~/.zshrc.local` before Home Manager takes those files over on first adoption, so hand-written PATH exports and credentials stay sourced instead of only living in an easy-to-miss `*.hm-backup` copy. Fixed the undefined `pip-tools` package reference in `nix/optional-packages.nix` (it lives under `python3Packages`, not top-level `pkgs`).

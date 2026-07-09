@@ -111,6 +111,19 @@ _prompt_preexec() {
   _prompt_cmd_start=$EPOCHSECONDS
 }
 
+# Long paths get truncated to "../last/three/dirs" instead of scrolling the
+# whole prompt off-screen; short paths print in full.
+_prompt_path() {
+  local -a parts
+  parts=("${(s:/:)PWD}")
+  parts=("${parts[@]:#}")
+  if (( ${#parts[@]} > 3 )); then
+    print -rn -- "../${(j:/:)parts[-3,-1]}"
+  else
+    print -rn -- "$PWD"
+  fi
+}
+
 # Terminal title doubles as the CRT "window banner": a live clock that
 # updates once per prompt instead of being repeated on every line.
 _prompt_set_title() {
@@ -134,7 +147,7 @@ _prompt_precmd() {
 preexec_functions+=(_prompt_preexec)
 precmd_functions+=(_prompt_precmd)
 
-PROMPT='%F{#4a8f68}%n@%m${_crt_reset} ${_crt_sep}::${_crt_reset} 📁 %F{#7dffb0}%/${_crt_reset}${_PROMPT_GIT_SEGMENT}
+PROMPT='%F{#4a8f68}%n@%m${_crt_reset} ${_crt_sep}::${_crt_reset} 📁 %F{#7dffb0}$(_prompt_path)${_crt_reset}${_PROMPT_GIT_SEGMENT}
 ${_crt_prompt}❯${_crt_reset} '
 RPROMPT='${_PROMPT_DURATION_SEGMENT}%(?.✅.❌)'
 
