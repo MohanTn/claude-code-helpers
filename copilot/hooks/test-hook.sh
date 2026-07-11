@@ -27,7 +27,9 @@ declare -A HOOK_INFO=(
   [pre-tool-use-edit-guard.sh]="preToolUse (edit/create)::deny no-op edits/writes"
   [pre-tool-use-loop-breaker.sh]="preToolUse (*)::deny 3rd consecutive identical tool call"
   [post-tool-use-edit.sh]="postToolUse (edit/create)::import/type-check/build gate after edits"
+  [post-tool-use-scaffold.sh]="postToolUse (bash)::nudge on unresolved AI_IMPLEMENTATION blocks after scaffold generate"
   [agent-stop-goal-check.sh]="agentStop::block stop until GOAL_CHECK: was stated"
+  [agent-stop-scaffold-check.sh]="agentStop::block stop until scaffold status reports all AI_IMPLEMENTATION blocks resolved"
   [session-end-cleanup.sh]="sessionEnd::prune stale hook state"
 )
 
@@ -57,9 +59,19 @@ default_payload() {
           toolArgs:{path:"/tmp/example.md"},
           toolResult:{resultType:"success", textResultForLlm:"ok"}}'
       ;;
+    post-tool-use-scaffold.sh)
+      jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
+        '{sessionId:$sid, cwd:$cwd, toolName:"bash",
+          toolArgs:{command:"scaffold generate --manifest x.toon"},
+          toolResult:{resultType:"success", textResultForLlm:"ok"}}'
+      ;;
     agent-stop-goal-check.sh)
       jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
         '{sessionId:$sid, cwd:$cwd, transcriptPath:"/nonexistent/transcript", stopReason:"end_turn"}'
+      ;;
+    agent-stop-scaffold-check.sh)
+      jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
+        '{sessionId:$sid, cwd:$cwd, stopReason:"end_turn"}'
       ;;
     session-end-cleanup.sh)
       jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
@@ -185,6 +197,26 @@ expect_output() {
   fi
 }
 
+# Runs a single expect_output call with PATH stripped of whatever directory
+# `scaffold` resolves from, so the scaffold hooks' fail-open branch is
+# exercised the same way on a dev machine that has scaffold installed and in
+# the sandboxed flake check that never does (there, scaffold is already
+# absent and this is a no-op). Only that one directory is removed: mktemp,
+# cat, jq etc. that run_hook itself depends on stay on PATH throughout.
+expect_output_without_scaffold() {
+  local scaffold_dir="" old_path="$PATH" new_path="" part
+  command -v scaffold >/dev/null 2>&1 && scaffold_dir="$(dirname "$(command -v scaffold)")"
+  if [ -n "$scaffold_dir" ]; then
+    while IFS= read -r part; do
+      [ "$part" = "$scaffold_dir" ] && continue
+      new_path="${new_path:+$new_path:}$part"
+    done <<< "$(printf '%s' "$PATH" | tr ':' '\n')"
+    PATH="$new_path"
+  fi
+  expect_output "$@"
+  PATH="$old_path"
+}
+
 cmd_selftest() {
   local cwd="$PWD"
 
@@ -225,6 +257,23 @@ cmd_selftest() {
     pre-tool-use-loop-breaker.sh "$loop_payload" empty
   rm -rf "${STATE_HOME:?}/selftest-loop"
 
+  # post-tool-use-scaffold: silent on any bash command that isn't a real
+  # `scaffold generate` invocation, regardless of whether `scaffold` is
+  # installed. This is the only branch testable without the real binary,
+  # which the sandboxed flake check never has on PATH.
+  expect_output "post-tool-use-scaffold stays quiet on an unrelated bash command" \
+    post-tool-use-scaffold.sh \
+    "$(jq -n --arg cwd "$cwd" '{sessionId:"selftest", cwd:$cwd, toolName:"bash", toolArgs:{command:"echo hi"}}')" \
+    empty
+
+  # post-tool-use-scaffold: fails open on a matching command when `scaffold`
+  # isn't on PATH, so a machine without it installed never emits a false
+  # nudge (also the sandboxed flake check's real environment).
+  expect_output_without_scaffold "post-tool-use-scaffold fails open when scaffold isn't installed" \
+    post-tool-use-scaffold.sh \
+    "$(jq -n --arg cwd "$cwd" '{sessionId:"selftest", cwd:$cwd, toolName:"bash", toolArgs:{command:"scaffold generate --manifest x.toon"}}')" \
+    empty
+
   expect_output "stop-gate no-ops without a transcript" \
     agent-stop-goal-check.sh \
     "$(jq -n --arg cwd "$cwd" '{sessionId:"selftest", cwd:$cwd, transcriptPath:"/nonexistent", stopReason:"end_turn"}')" \
@@ -246,6 +295,13 @@ cmd_selftest() {
     agent-stop-goal-check.sh "$stop_payload" empty
   rm -rf "${STATE_HOME:?}/selftest-stop2"
   rm -f "$transcript"
+
+  # agent-stop-scaffold-check: fails open when `scaffold` isn't on PATH, the
+  # only branch testable without the real binary.
+  expect_output_without_scaffold "agent-stop-scaffold-check fails open when scaffold isn't installed" \
+    agent-stop-scaffold-check.sh \
+    "$(jq -n --arg cwd "$cwd" '{sessionId:"selftest", cwd:$cwd, stopReason:"end_turn"}')" \
+    empty
 
   expect_output "session-start emits a digest as additionalContext" \
     session-start.sh \

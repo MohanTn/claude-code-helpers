@@ -34,6 +34,12 @@
         "matcher": "edit|create|write",
         "bash": "bash \"${COPILOT_HOME:-$HOME/.copilot}/hooks/scripts/post-tool-use-edit.sh\"",
         "timeoutSec": 45
+      },
+      {
+        "type": "command",
+        "matcher": "bash",
+        "bash": "bash \"${COPILOT_HOME:-$HOME/.copilot}/hooks/scripts/post-tool-use-scaffold.sh\"",
+        "timeoutSec": 15
       }
     ],
     "agentStop": [
@@ -41,6 +47,11 @@
         "type": "command",
         "bash": "bash \"${COPILOT_HOME:-$HOME/.copilot}/hooks/scripts/agent-stop-goal-check.sh\"",
         "timeoutSec": 8
+      },
+      {
+        "type": "command",
+        "bash": "bash \"${COPILOT_HOME:-$HOME/.copilot}/hooks/scripts/agent-stop-scaffold-check.sh\"",
+        "timeoutSec": 15
       }
     ],
     "sessionEnd": [
