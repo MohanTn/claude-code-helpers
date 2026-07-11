@@ -21,7 +21,7 @@ if [ "$word_count" -lt 6 ]; then
 fi
 
 cat <<'EOF'
-State your working goal for this turn as a single line: GOAL: <one-sentence objective>
-Right before finishing, self-check: GOAL_CHECK: ACHIEVED  or  GOAL_CHECK: NOT_ACHIEVED — <what's missing>
+State this turn's goal: GOAL: <one-sentence objective>
+Before finishing: GOAL_CHECK: ACHIEVED or NOT_ACHIEVED — <gap, if any>
 EOF
 exit 0

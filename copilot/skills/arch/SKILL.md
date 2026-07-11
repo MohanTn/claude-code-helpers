@@ -5,9 +5,7 @@ description: Produce and iteratively refine a living architecture document (arch
 
 # arch: Feature architecture template via JSON → HTML injection
 
-You are the Senior Solution Architect face of the feature team, working under the Fable charter ("Working style" in `~/.copilot/copilot-instructions.md`): outcome first, plain prose, recommendations over surveys.
-
-This skill generates feature-specific architecture content as **structured JSON**, which a Node.js injection script then merges into a pre-built HTML template. This two-stage approach eliminates redundant HTML regeneration and cuts token consumption by ~75% compared to full-HTML generation: you never read or rewrite the template yourself, the script does that deterministically.
+Generate feature architecture as structured JSON (injected into HTML template by a deterministic script, not regenerated each pass).
 
 ---
 
@@ -32,11 +30,11 @@ This skill generates feature-specific architecture content as **structured JSON*
 
 ---
 
-## Before generating (do once per mode)
+## Before generating
 
-- Glance at the repo for real stack details, existing API/endpoint style, data layer, React component conventions, naming patterns. Reuse them.
-- Do NOT do web research. Invent realistic, concrete values (UUIDs, JWT snippets, NRQL, endpoint paths, table names).
-- If something is genuinely unknown, make a sensible, explicitly-stated assumption in Section 1 AND raise it as an Open Question in Section 10 so the user can correct it next pass.
+- Research repo stack, API patterns, conventions; reuse real names and styles.
+- Invent realistic concrete values (UUIDs, JWT snippets, paths, table names). Never do web research.
+- Unknown values: state as an assumption in Section 1, raise as an Open Question in Section 10.
 
 ---
 
@@ -153,73 +151,31 @@ Each section must contain:
 
 ---
 
-## After saving (every run)
+## After saving
 
-Print to chat in charter style:
-
-1. Filename + full path, current **Version** and **Status**.
-2. A short bullet list of what this pass added/changed (the new Revision Log entry).
-3. The **Open Questions** that need user input, each with its proposed default.
-4. Next step: *"Review and reply with changes to refine, or say 'approved' to flip status to APPROVED — READY FOR IMPLEMENTATION. Once approved, the feature skill will hand the document to the implementation pipeline."*
+Print to chat:
+1. Filename, Version, Status.
+2. What changed (Revision Log summary).
+3. Open Questions needing user input.
+4. Next step: "Review and reply with changes, or say 'approved' to flip to APPROVED — READY FOR IMPLEMENTATION."
 
 ---
 
-## 🔍 Self-retrospection (MANDATORY, before saving)
+## 🔍 Self-retrospection (MANDATORY)
 
-Re-read the entire generated file end-to-end:
+Before saving, verify:
+- Completeness: every section 0–10 filled; no TBD/placeholder strings.
+- No vague phrases; ambiguities are precise Open Questions in Section 10.
+- Names consistent across sections; version matches revision log.
+- Mermaid syntax valid for each diagram type.
 
-- **Completeness:** every section 0–10 filled; no banned placeholder strings.
-- **Ambiguity sweep:** find vague phrases ("etc.", "as needed", "various", undefined acronyms, unquantified NFRs). Make them concrete or convert to a specific Open Question (Section 10) with a proposed default.
-- **Open-ended features:** any capability without inputs, outputs, states, error behavior is incomplete. Specify or log a precise Open Question.
-- **Consistency:** entity/endpoint/component names match across all sections; version in banner matches revision log; status reflects lifecycle.
-- **Mermaid validity:** each block uses correct syntax for its type; no syntax errors.
-
-Report what was found and fixed, and list any Open Questions the user must answer.
+Report findings and the Open Questions the user must resolve.
 
 ---
 
 ## Implementation
 
-1. **Check if `arch-<slug>.html` already exists** in the working directory.
-
-2. **If Mode A (first draft):**
-   - Research the repo: stack, API patterns, conventions.
-   - Generate clean HTML fragments for sections 0–10 (no `<section>` wrapper, no `<h2>`, those are in the template).
-   - Assemble a JSON structure:
-     ```json
-     {
-       "title": "How Does This Repo Work",
-       "summary": "Reproducible machine setup as a Nix flake...",
-       "stack": "Nix · Bash · Home Manager",
-       "status": "DRAFT",
-       "statusClass": "draft",
-       "version": "v1",
-       "lastUpdated": "2026-07-11",
-       "authorModel": "the model name producing this pass",
-       "revisionLog": [
-         { "version": "v1", "date": "2026-07-11", "summary": "Initial draft...", "drivenBy": "First generation" }
-       ],
-       "sections": {
-         "0": "<tr><td>...</td></tr>...",
-         "1": "<div class='card'>...</div>...",
-         "2": "...",
-         ... (sections 0-10 as HTML fragments)
-       }
-     }
-     ```
-   - Write JSON to `arch-<slug>.json`.
-   - Run: `node ~/.agents/skills/arch/arch-inject.js arch-<slug>.json arch-<slug>.html`
-   - Delete `arch-<slug>.json`.
-
-3. **If Mode B (refinement):**
-   - Read existing `arch-<slug>.html` to extract metadata (version, status, revision log).
-   - Apply user feedback by generating new HTML fragments for affected sections only.
-   - Increment version (v1 → v2).
-   - Assemble updated JSON with new version, new revision log entry, and updated sections.
-   - Write JSON to `arch-<slug>.json`.
-   - Run injection script.
-   - Delete `arch-<slug>.json`.
-
-4. **Run retrospection check** and report findings (see "Self-retrospection" section).
-
-5. **Print outcomes in charter style** (see "After saving" section).
+1. Check if `arch-<slug>.html` exists.
+2. If Mode A: research repo, generate section HTML, assemble JSON per schema above, run `node ~/.agents/skills/arch/arch-inject.js arch-<slug>.json arch-<slug>.html`, delete JSON.
+3. If Mode B: extract metadata from existing HTML, regenerate affected sections, increment version, assemble updated JSON, run injection script, delete JSON.
+4. Run retrospection, report findings and Open Questions per "Self-retrospection" section.
