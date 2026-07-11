@@ -15,6 +15,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 
+- Condensed agent charters (implementer, planner, reviewer, scout, verifier) and command instructions (arch, feature) to eliminate redundancy and shorten lines without altering behavior. Reformatted arch-template.html for readability with normalized indentation and quote style.
 - Condensed CLAUDE.md from verbose charter to token-efficient format; assigned explicit models to five agents (planner: Sonnet for architecture, others: Haiku for speed) to optimize cost and latency while preserving quality.
 - Created a comprehensive token-efficiency skill documenting safe optimization patterns (redundancy deduplication, preamble condensing, hook trimming), then applied those patterns to `arch.md` and hooks. Condensed verbose prose, preserved all parsing logic and requirements, synced changes across Claude and Copilot ports. Added Mermaid diagram usage guidance to arch injection tool.
 - Creates `agents/` directory as a shared layer between Claude Code and Copilot CLI for tool-independent artifacts like templates and scripts. Refactors `/arch` command from direct HTML generation to JSON-based template injection (cutting token use by ~75%) while removing the deprecated `/explore-topic` and `/ui-mock` commands. Adds infrastructure for chrome-devtools-axi by installing Google Chrome on apt systems and providing a Chromium fallback wrapper.

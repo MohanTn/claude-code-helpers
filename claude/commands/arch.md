@@ -21,15 +21,9 @@ Generate feature architecture as structured JSON (injected into HTML template by
 4. Run injection script with updated JSON.
 5. Delete temporary JSON.
 
-**Derive `<slug>`** from $ARGUMENTS: a few words, lowercased, spaces→hyphens (e.g. "user auth workflow" → `user-auth-workflow`).
+**Derive `<slug>`** from $ARGUMENTS lowercased, spaces→hyphens (e.g. "user auth workflow" → `user-auth-workflow`).
 
----
-
-## Before generating
-
-- Research repo stack, API patterns, conventions; reuse real names and styles.
-- Invent realistic concrete values (UUIDs, JWT snippets, paths, table names). Never do web research.
-- Unknown values: state as an assumption in Section 1, raise as an Open Question in Section 10.
+**Before generating:** research repo stack and conventions; invent concrete values (UUIDs, JWTs, paths, table names). Unknown values: assume in Section 1, question in Section 10.
 
 ---
 
@@ -148,11 +142,7 @@ Each section must contain:
 
 ## After saving
 
-Print to chat:
-1. Filename, Version, Status.
-2. What changed (Revision Log summary).
-3. Open Questions needing user input.
-4. Next step: "Review and reply with changes, or say 'approved' to flip to APPROVED — READY FOR IMPLEMENTATION."
+Print: Filename, Version, Status, revision log summary, Open Questions, and next step: "Reply with changes or say 'approved' to gate APPROVED — READY FOR IMPLEMENTATION."
 
 ---
 
@@ -170,8 +160,8 @@ Report findings and the Open Questions the user must resolve.
 
 ## Implementation
 
-1. Check if `arch-<slug>.html` exists.
-2. If Mode A: research repo, generate section HTML, assemble JSON per schema above, run `node ~/.agents/skills/arch/arch-inject.js arch-<slug>.json arch-<slug>.html`, delete JSON.
-3. If Mode B: extract metadata from existing HTML, regenerate affected sections, increment version, assemble updated JSON, run injection script, delete JSON.
-4. Run retrospection, report findings and Open Questions per "Self-retrospection" section.
+1. Check `arch-<slug>.html` exists → Mode A (new) or Mode B (refine).
+2. **Mode A:** research repo, generate section HTML, assemble JSON per schema, run `node ~/.agents/skills/arch/arch-inject.js arch-<slug>.json arch-<slug>.html`, delete JSON.
+3. **Mode B:** extract metadata from HTML, regenerate affected sections, increment version, assemble JSON, run injection script, delete JSON.
+4. Run self-retrospection per above, report findings and Open Questions.
 
