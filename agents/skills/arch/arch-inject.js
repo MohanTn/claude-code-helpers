@@ -2,6 +2,9 @@
 /**
  * arch-inject.js — Template injection tool for architecture documents
  *
+ * IMPORTANT: All diagrams MUST use Mermaid syntax for rendering in HTML.
+ * The template includes Mermaid.js which will auto-render any <div class="mermaid"> blocks.
+ *
  * Usage:
  *   node arch-inject.js <input-json> <output-html> [template-path]
  *
@@ -16,14 +19,25 @@
  *     "lastUpdated": "2026-07-11",
  *     "authorModel": "Claude Haiku 4.5",
  *     "revisionLog": [
- *       { "version": "v1", "date": "2026-07-11", "summary": "Initial draft...", "drivenaBy": "First generation" }
+ *       { "version": "v1", "date": "2026-07-11", "summary": "Initial draft...", "drivenBy": "First generation" }
  *     ],
  *     "sections": {
  *       "0": "<tr><td>...</td></tr>...",
- *       "1": "<div class='card'>...</div>...",
- *       ... (sections 2-10)
+ *       "1": "<div class='card'><h3>Title</h3><p>Content...</p></div>",
+ *       "2": "<div class='card'>...<div class='mermaid'>graph TD\\n  A[Node] --> B[Node]</div></div>",
+ *       ... (sections 0-10 as HTML fragments)
  *     }
  *   }
+ *
+ * DIAGRAM REQUIREMENTS:
+ * - All diagrams MUST be wrapped in: <div class="mermaid">DIAGRAM_SYNTAX_HERE</div>
+ * - Use Mermaid graph types: graph, flowchart, stateDiagram-v2, sequenceDiagram, classDiagram, erDiagram
+ * - Escape newlines in JSON strings as: \\n (Mermaid will render line breaks correctly)
+ * - Examples:
+ *   - Flowchart: graph TD\\n  A[Start] --> B[End]
+ *   - State diagram: stateDiagram-v2\\n  [*] --> State1\\n  State1 --> [*]
+ *   - Sequence: sequenceDiagram\\n  User->>System: Request\\n  System-->>User: Response
+ * - Do NOT use ASCII art or plain text; Mermaid renders programmatic diagrams only
  */
 
 const fs = require('fs');
@@ -78,6 +92,8 @@ function injectContent(template, config) {
   put(/{{REVISION_LOG_ROWS}}/g, buildRevisionLogHtml(config.revisionLog));
 
   // Replace section content (raw HTML, assumed safe from input)
+  // IMPORTANT: Section content MUST include Mermaid diagrams wrapped in <div class="mermaid">
+  // The template loads Mermaid.js which will automatically render any Mermaid syntax found
   for (let i = 0; i <= 10; i++) {
     const sectionContent = config.sections[`${i}`] || '';
     put(new RegExp(`{{SECTION_${i}_CONTENT}}`, 'g'), sectionContent);
@@ -93,9 +109,17 @@ function main() {
     console.error('Usage: node arch-inject.js <input-json> <output-html> [template-path]');
     console.error('');
     console.error('Arguments:');
-    console.error('  <input-json>   Path to JSON file with section content');
-    console.error('  <output-html>  Path to write final HTML');
+    console.error('  <input-json>    Path to JSON file with section content (HTML fragments with Mermaid diagrams)');
+    console.error('  <output-html>   Path to write final HTML (will include rendered Mermaid diagrams)');
     console.error('  [template-path] Path to HTML template (default: arch-template.html next to this script)');
+    console.error('');
+    console.error('IMPORTANT: All diagrams in JSON sections MUST use Mermaid syntax:');
+    console.error('  - Wrap diagrams: <div class="mermaid">DIAGRAM_SYNTAX_HERE</div>');
+    console.error('  - Use Mermaid types: graph, flowchart, stateDiagram-v2, sequenceDiagram, classDiagram');
+    console.error('  - Escape newlines: Use \\\\n (double backslash-n) in JSON strings');
+    console.error('  - Example: <div class="mermaid">graph TD\\\\n  A[Start] --> B[End]</div>');
+    console.error('');
+    console.error('The HTML template includes Mermaid.js which will auto-render these diagrams.');
     process.exit(1);
   }
 

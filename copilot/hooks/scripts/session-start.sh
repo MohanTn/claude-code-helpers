@@ -67,8 +67,8 @@ context=$(cat "$digest" 2>/dev/null)
 context="${context}
 
 Working conventions for every non-trivial request:
-State your working goal as a single line: GOAL: <one-sentence objective>
-Right before finishing, self-check: GOAL_CHECK: ACHIEVED  or  GOAL_CHECK: NOT_ACHIEVED — <what's missing>
+State this turn's goal: GOAL: <one-sentence objective>
+Before finishing: GOAL_CHECK: ACHIEVED or NOT_ACHIEVED — <gap, if any>
 Follow YAGNI: only make changes with genuine functional value."
 
 jq -n --arg ctx "$context" '{additionalContext: $ctx}'
