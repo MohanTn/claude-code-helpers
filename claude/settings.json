@@ -21,6 +21,15 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/scaffold-intent-capture.sh\"",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -60,6 +69,15 @@
             "timeout": 45
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/scaffold/hooks/post-tool-use.mjs\""
+          }
+        ]
       }
     ],
     "PreCompact": [],
@@ -70,6 +88,14 @@
             "type": "command",
             "command": "bash \"$HOME/.claude/hooks/stop-goal-check.sh\"",
             "timeout": 8
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/scaffold/hooks/stop.mjs\""
           }
         ]
       }
