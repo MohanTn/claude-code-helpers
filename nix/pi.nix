@@ -14,6 +14,7 @@ let
   npmGlobals = [
     "pipeline-worker"
     "@github/copilot"
+    "chrome-devtools-axi" # browser bridge used by the claude chrome-devtools-axi skill
   ];
 in
 {

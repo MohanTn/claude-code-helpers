@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 
+- Refactored the /arch command to use a two-stage JSON → HTML injection pipeline instead of full HTML generation. Claude now generates structured JSON with section content and metadata; a Node.js script deterministically injects this into a pre-built template. Enhanced the template with dark mode toggle, reading progress bar, improved responsive design, and added comprehensive unit tests for the injection logic.
 - Removes the magic-nix-cache-action step to reduce external dependencies and adds a 5-minute timeout-minutes constraint to the flake-check job to prevent indefinite hangs.
 - Removed three unused npm global packages (Google Gemini CLI, freebuff, mcp-sonar-analysis) and added smart path truncation to the zsh prompt. Long paths now display as "../last/three/dirs" instead of scrolling the prompt off-screen, while short paths display in full.
 - Replace the full Home Manager activation package build with a lightweight derivation evaluation that still validates all configuration but avoids building tens of GB of unused dependencies (zed-editor, dotnet-sdk). Uses `unsafeDiscardOutputDependency` on the derivation path to skip output dependencies while keeping instantiation checks.

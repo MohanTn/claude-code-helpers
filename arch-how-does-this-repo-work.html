@@ -1,0 +1,1668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Architecture — How Does This Repo Work</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --accent: #2563eb;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --status-draft: #64748b;
+      --status-review: #f59e0b;
+      --status-approved: #16a34a;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.6;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
+    }
+
+    nav#toc {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 240px;
+      height: 100vh;
+      background: var(--card-bg);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      z-index: 100;
+      padding: 2rem 1rem;
+    }
+
+    nav#toc .brand {
+      font-weight: bold;
+      font-size: 1.1rem;
+      color: var(--accent);
+      margin-bottom: 2rem;
+      display: block;
+    }
+
+    nav#toc a {
+      display: block;
+      padding: 0.5rem 0.75rem;
+      margin: 0.5rem 0;
+      color: var(--text);
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      transition: all 0.2s;
+    }
+
+    nav#toc a:hover {
+      background: var(--bg);
+      color: var(--accent);
+    }
+
+    nav#toc a.active {
+      background: var(--accent);
+      color: white;
+      font-weight: 500;
+    }
+
+    main {
+      margin-left: 240px;
+      padding: 3rem 2rem;
+      max-width: 1100px;
+      margin-right: auto;
+    }
+
+    header {
+      margin-bottom: 3rem;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      color: var(--text);
+    }
+
+    header .subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .status-banner {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      padding: 1rem 1.5rem;
+      border-radius: 12px;
+      margin-bottom: 2rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .status-banner.draft {
+      background: rgba(100, 116, 139, 0.1);
+      color: var(--status-draft);
+      border-left: 4px solid var(--status-draft);
+    }
+
+    .status-banner.review {
+      background: rgba(245, 158, 11, 0.1);
+      color: var(--status-review);
+      border-left: 4px solid var(--status-review);
+    }
+
+    .status-banner.approved {
+      background: rgba(22, 163, 74, 0.1);
+      color: var(--status-approved);
+      border-left: 4px solid var(--status-approved);
+    }
+
+    section {
+      margin-bottom: 3rem;
+      scroll-margin-top: 2rem;
+    }
+
+    section h2 {
+      font-size: 1.4rem;
+      margin-bottom: 1.5rem;
+      padding-left: 1rem;
+      border-left: 4px solid var(--accent);
+      color: var(--text);
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .card h3 {
+      font-size: 1.1rem;
+      margin-bottom: 1rem;
+      color: var(--text);
+    }
+
+    .card h4 {
+      font-size: 1rem;
+      margin-top: 1.5rem;
+      margin-bottom: 0.75rem;
+      color: var(--accent);
+    }
+
+    .card p {
+      margin-bottom: 1rem;
+      color: var(--text);
+    }
+
+    .card ul, .card ol {
+      margin-left: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .card li {
+      margin-bottom: 0.5rem;
+      color: var(--text);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 1rem;
+    }
+
+    table thead {
+      background: var(--bg);
+      border-bottom: 2px solid var(--border);
+    }
+
+    table th {
+      padding: 1rem;
+      text-align: left;
+      font-weight: 600;
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+
+    table td {
+      padding: 1rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+
+    table tbody tr:nth-child(even) {
+      background: rgba(100, 116, 139, 0.02);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin-bottom: 1rem;
+    }
+
+    .mermaid-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 400px;
+    }
+
+    .mermaid {
+      display: flex;
+      justify-content: center;
+    }
+
+    pre, code {
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-width: 100%;
+      font-family: 'Courier New', Courier, monospace;
+    }
+
+    pre {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      overflow-x: auto;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+      line-height: 1.4;
+    }
+
+    code {
+      background: rgba(100, 116, 139, 0.1);
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      color: #e11d48;
+      font-size: 0.9rem;
+    }
+
+    pre code {
+      background: none;
+      padding: 0;
+      color: var(--text);
+    }
+
+    details {
+      margin-bottom: 1.5rem;
+    }
+
+    details summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--accent);
+      padding: 0.75rem;
+      user-select: none;
+      transition: all 0.2s;
+    }
+
+    details summary:hover {
+      background: var(--bg);
+      border-radius: 6px;
+    }
+
+    details[open] summary {
+      margin-bottom: 1rem;
+    }
+
+    details pre {
+      margin-top: 1rem;
+    }
+
+    .approval-gate {
+      background: rgba(22, 163, 74, 0.1);
+      border-left: 4px solid var(--status-approved);
+      padding: 1rem 1.5rem;
+      border-radius: 8px;
+      color: var(--status-approved);
+      font-weight: 500;
+      margin-top: 2rem;
+    }
+
+    section, .card, td, th {
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+
+    @media (max-width: 900px) {
+      nav#toc {
+        position: static;
+        width: 100%;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+
+      nav#toc .brand {
+        display: inline-block;
+        margin-right: 2rem;
+      }
+
+      nav#toc a {
+        display: inline-block;
+        margin: 0 0.5rem;
+        padding: 0.4rem 0.6rem;
+        font-size: 0.85rem;
+      }
+
+      main {
+        margin-left: 0;
+        padding: 2rem 1rem;
+      }
+
+      header h1 {
+        font-size: 1.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav id="toc">
+    <span class="brand">🏛️ Architecture</span>
+    <a href="#s0">0 · Document Control</a>
+    <a href="#s1">1 · Overview</a>
+    <a href="#s2">2 · Use Cases &amp; Scope</a>
+    <a href="#s3">3 · C4 Context &amp; Containers</a>
+    <a href="#s4">4 · Domain &amp; Data Model</a>
+    <a href="#s5">5 · API Design</a>
+    <a href="#s6">6 · UI/UX</a>
+    <a href="#s7">7 · Behaviour &amp; Process</a>
+    <a href="#s8">8 · Deployment</a>
+    <a href="#s9">9 · Monitoring &amp; Alerts</a>
+    <a href="#s10">10 · Open Questions &amp; Risks</a>
+  </nav>
+
+  <main>
+    <header>
+      <h1>🏛️ Architecture — How Does This Repo Work</h1>
+      <p class="subtitle">Reproducible machine setup as a Nix flake with declarative configuration and drift detection · Nix · Bash · Home Manager</p>
+    </header>
+
+    <section id="s0">
+      <h2>0 · Document Control</h2>
+      <div class="status-banner draft">
+        <strong>Status:</strong> DRAFT · <strong>Version:</strong> v1 · <strong>Last Updated:</strong> 2026-07-11 · <strong>Author:</strong> Claude Haiku 4.5
+      </div>
+
+      <div class="card">
+        <h3>Revision Log</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Version</th>
+                <th>Date</th>
+                <th>Summary of Changes</th>
+                <th>Driven By</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>v1</td><td>2026-07-11</td><td>Initial architecture draft explaining the full Nix flake-based dotfiles system, including module structure, configuration lifecycle, drift detection, and deployment model</td><td>First generation</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="approval-gate">
+        <strong>Approval Gate:</strong> This document must reach APPROVED status before implementation begins.
+      </div>
+    </section>
+
+    <section id="s1">
+      <h2>1 · Overview — Feature, Audience &amp; Dependencies</h2>
+
+      <div class="card">
+        <h3>Feature Summary</h3>
+        <p>mohan-dotfiles is a personal machine setup distributed as a reproducible Nix flake. It declaratively defines and deploys every configuration file, package, and tool across Linux and WSL environments, ensuring every fresh machine clone installs identically pinned versions with a single command. The system treats live files under <code>$HOME</code> as read-only Nix store symlinks, enforces configuration drift detection, and preserves machine-local secrets outside version control.</p>
+      </div>
+
+      <div class="card">
+        <h3>Audience &amp; Actors</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Actor</th>
+                <th>Responsibility</th>
+                <th>System Interaction</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Machine Owner (Mohan)</td>
+                <td>Edits Nix modules in this repo; runs setup.sh to deploy changes; runs setup.sh doctor to detect drift</td>
+                <td>Full control: reads/writes all Nix files, runs CLI commands</td>
+              </tr>
+              <tr>
+                <td>Home Manager (NixOS project)</td>
+                <td>Reads flake.nix and module tree; builds activation package; creates/updates store symlinks in $HOME</td>
+                <td>Executes under user account; symlinks all managed config files</td>
+              </tr>
+              <tr>
+                <td>Nix daemon (system service)</td>
+                <td>Evaluates flake.nix with $USER from environment; builds derivations; stores in /nix/store</td>
+                <td>Deterministic build and caching; --impure flag required for $USER eval</td>
+              </tr>
+              <tr>
+                <td>CI/CD Pipeline (.github/workflows/ci.yml)</td>
+                <td>Runs nix flake check --impure to validate modules, hook tests, and setup.sh lint/doctor</td>
+                <td>Gated on push/PR; must pass before merge</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Dependencies &amp; Integrations</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>System</th>
+                <th>Purpose</th>
+                <th>Version/Location</th>
+                <th>Protocol</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>nixpkgs (GitHub)</td>
+                <td>Package repository pinned by flake.lock; all CLI tools, libraries, fonts sourced from here</td>
+                <td>release-25.05 (pinned in flake.nix)</td>
+                <td>Nix derivation evaluation</td>
+              </tr>
+              <tr>
+                <td>home-manager (GitHub nix-community)</td>
+                <td>Declarative user environment manager; defines modules imported by nix/home.nix</td>
+                <td>release-25.05 (pinned in flake.nix)</td>
+                <td>Nix module system</td>
+              </tr>
+              <tr>
+                <td>Determinate Systems Nix Installer</td>
+                <td>Install Nix itself if missing on first run (setup.sh ensure_nix)</td>
+                <td>Latest, fetched via https://install.determinate.systems/nix</td>
+                <td>HTTPS + shell script</td>
+              </tr>
+              <tr>
+                <td>Linux/WSL kernel</td>
+                <td>Target execution environment; must support /nix/store symlinks</td>
+                <td>Ubuntu 24.04+ or WSL2</td>
+                <td>File system, symlinks, bash/zsh</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>At-a-Glance Summary</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Attribute</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Owner</strong></td>
+                <td>MohanTn (Mohan)</td>
+              </tr>
+              <tr>
+                <td><strong>Repository</strong></td>
+                <td>github.com/MohanTn/mohan-dotfiles (this repo)</td>
+              </tr>
+              <tr>
+                <td><strong>Primary Checkout</strong></td>
+                <td>~/REPO/mohan-dotfiles (hard-coded expectation in setup.sh and nvim.nix)</td>
+              </tr>
+              <tr>
+                <td><strong>Config State Store</strong></td>
+                <td>Version control (flake.nix, nix/*.nix, claude/, copilot/, nvim/, pi/, zsh/)</td>
+              </tr>
+              <tr>
+                <td><strong>Machine-Local State</strong></td>
+                <td>${XDG_STATE_HOME}/nix/profiles/home-manager (stores generations); ~/.zshrc.local (secrets); ~/.config/mohan-dotfiles/packages-config.nix (optional package selections)</td>
+              </tr>
+              <tr>
+                <td><strong>Environments</strong></td>
+                <td>Development (Linux), WSL2, CI/CD (GitHub Actions)</td>
+              </tr>
+              <tr>
+                <td><strong>Auth Model</strong></td>
+                <td>User account (no separate auth); sudo for chsh on first run</td>
+              </tr>
+              <tr>
+                <td><strong>Deployment Trigger</strong></td>
+                <td>Manual: ./setup.sh; automated: ./setup-packages.sh then ./setup.sh</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="s2">
+      <h2>2 · Use Cases &amp; Scope</h2>
+
+      <div class="card">
+        <h3>Use Case Flowchart</h3>
+        <div class="mermaid-card">
+          <div class="mermaid">
+graph LR
+  A["Machine Owner"] -->|git clone + setup.sh| B["Fresh Linux/WSL Machine"]
+  B -->|Nix flake.nix eval| C["Home Manager"]
+  C -->|symlink home-files/| D["$HOME/.config, $HOME/.local/..."]
+  A -->|edit nix/*.nix| E["Version Control"]
+  E -->|git push| F["GitHub"]
+  F -->|push webhook| G["CI/CD: nix flake check"]
+  G -->|pass/fail| H["PR status"]
+  A -->|git pull + setup.sh| B
+  B -->|./setup.sh doctor| I["Drift Audit"]
+  I -->|detect: ~/.zshrc not linked| J["FAIL: manual edit detected"]
+  J -->|show *.hm-backup, re-link| K["drift resolved"]
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Functional Requirements</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Requirement</th>
+                <th>Acceptance Criteria</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>FR1</strong></td>
+                <td>Declarative configuration in Nix</td>
+                <td>All config files (.zshrc, .gitconfig, claude/CLAUDE.md, etc.) are generated by Home Manager from nix/*.nix; edit Nix, not the live files</td>
+              </tr>
+              <tr>
+                <td><strong>FR2</strong></td>
+                <td>Reproducible deployment</td>
+                <td>flake.lock pins nixpkgs and home-manager versions; running setup.sh on machine A and machine B yields identical $HOME with same packages and versions</td>
+              </tr>
+              <tr>
+                <td><strong>FR3</strong></td>
+                <td>Drift detection and recovery</td>
+                <td>setup.sh doctor scans every managed file and detects edits outside Nix; setup.sh with no args reverts drifted files to Nix-managed symlinks, saving hand-written copies as *.hm-backup</td>
+              </tr>
+              <tr>
+                <td><strong>FR4</strong></td>
+                <td>Machine-local secrets isolation</td>
+                <td>Secrets never enter git; ~/.zshrc.local (untracked) is sourced last by managed zshrc; setup-packages.sh writes to ~/.config/mohan-dotfiles/packages-config.nix</td>
+              </tr>
+              <tr>
+                <td><strong>FR5</strong></td>
+                <td>Modular, scoped config</td>
+                <td>nix/home.nix imports one module per concern: packages.nix, zsh.nix, git.nix, claude.nix, copilot.nix, nvim.nix, pi.nix; changes to one module do not require editing others</td>
+              </tr>
+              <tr>
+                <td><strong>FR6</strong></td>
+                <td>CLI tool discovery and updates</td>
+                <td>setup.sh installs Nix if missing; setup-packages.sh presents a checklist (Docker, Python, Copilot, etc.); re-running setup-packages.sh and setup.sh re-installs changed selections</td>
+              </tr>
+              <tr>
+                <td><strong>FR7</strong></td>
+                <td>Hook regression testing</td>
+                <td>claude/hooks/test-hook.sh selftest and copilot/hooks/test-hook.sh selftest run in sandbox; flake checks enforce that both pass before CI success</td>
+              </tr>
+              <tr>
+                <td><strong>FR8</strong></td>
+                <td>Cross-machine account flexibility</td>
+                <td>flake.nix reads $USER at eval time with --impure; same checkout works under any username without edits</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Non-Functional Requirements</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Attribute</th>
+                <th>Measurable Target</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Reproducibility</strong></td>
+                <td>100% identical outputs across machines given same flake.lock, evaluated with --impure and same $USER</td>
+              </tr>
+              <tr>
+                <td><strong>Deployment speed</strong></td>
+                <td>setup.sh completes in under 5 minutes on a modern machine (after Nix install on first run)</td>
+              </tr>
+              <tr>
+                <td><strong>Drift detection latency</strong></td>
+                <td>setup.sh doctor completes scan of all managed files in under 2 seconds</td>
+              </tr>
+              <tr>
+                <td><strong>CI/CD check duration</strong></td>
+                <td>nix flake check --impure (home eval + hook tests + setup.sh lint/doctor) completes in under 60 seconds on GitHub Actions runner</td>
+              </tr>
+              <tr>
+                <td><strong>Availability</strong></td>
+                <td>setup.sh has no external dependency other than GitHub (for git clone); Nix installer fallback to Determinate Systems</td>
+              </tr>
+              <tr>
+                <td><strong>Observability</strong></td>
+                <td>Every setup.sh command logs its action; doctor reports specific file paths with drift type; setup-packages.sh shows selected vs. unselected in UI</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Out of Scope</h3>
+        <ul>
+          <li>NixOS system configuration (this flake is Home Manager only, runs on non-NixOS systems)</li>
+          <li>Multi-user machine setup (designed for single user account per machine)</li>
+          <li>Automatic deployment via CI/CD (manual setup.sh invocation required; no push-to-deploy)</li>
+          <li>Custom binary provisioning (only packages in nixpkgs or pre-built binaries via Home Manager activation scripts)</li>
+          <li>Machine-to-machine sync of generated files (setup-packages.sh selections are local; ~/.zshrc.local secrets never synced)</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="s3">
+      <h2>3 · C4 — Context &amp; Containers</h2>
+
+      <div class="card">
+        <h3>C4 Context Diagram</h3>
+        <div class="mermaid-card">
+          <div class="mermaid">
+graph TB
+  U["👤 Machine Owner<br/>(Mohan)"]
+  R["🐙 GitHub Repo<br/>mohan-dotfiles"]
+  G["🏗️ GitHub Actions<br/>CI/CD Pipeline"]
+  NP["📦 nixpkgs<br/>(GitHub)"]
+  HM["🔧 Home Manager<br/>(GitHub nix-community)"]
+  LM["💻 Linux/WSL<br/>Target Machine"]
+
+  U -->|git clone + setup.sh| LM
+  U -->|git push| R
+  R -->|webhook| G
+  G -->|nix flake check| R
+  R -->|flake.lock fetch| NP
+  R -->|flake.lock fetch| HM
+  LM -->|nix eval flake.nix| R
+  LM -->|fetch + install| NP
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>C4 Container Diagram (System Internals)</h3>
+        <div class="mermaid-card">
+          <div class="mermaid">
+graph TB
+  FN["flake.nix<br/>(entry point)"]
+  HN["nix/home.nix<br/>(module imports)"]
+
+  PKG["nix/packages.nix<br/>(nixpkgs selection)"]
+  ZSH["nix/zsh.nix<br/>(shell config)"]
+  GIT["nix/git.nix<br/>(git config)"]
+  CLAUDE["nix/claude.nix<br/>(Claude Code)"]
+  COPILOT["nix/copilot.nix<br/>(Copilot CLI)"]
+  NVIM["nix/nvim.nix<br/>(Neovim)"]
+  PI["nix/pi.nix<br/>(Pi agent)"]
+
+  SETUP["setup.sh<br/>(CLI orchestrator)"]
+  SETUPPKG["setup-packages.sh<br/>(interactive picker)"]
+
+  CONFIG["claude/, copilot/,<br/>nvim/, pi/, zsh/<br/>(config sources)"]
+  SECRETS["~/.zshrc.local<br/>(machine-local secrets)"]
+  PKGCFG["~/.config/mohan-dotfiles/<br/>packages-config.nix<br/>(optional selections)"]
+
+  STATE["~/.local/state/nix/<br/>profiles/home-manager/<br/>home-files/(symlinks)"]
+
+  FN --> HN
+  HN --> PKG
+  HN --> ZSH
+  HN --> GIT
+  HN --> CLAUDE
+  HN --> COPILOT
+  HN --> NVIM
+  HN --> PI
+
+  SETUP -->|nix run| FN
+  SETUPPKG -->|write| PKGCFG
+
+  PKG -->|source files| CONFIG
+  ZSH -->|source| CONFIG
+  CLAUDE -->|reference| CONFIG
+
+  SETUP -->|manage| STATE
+  CONFIG -->|read by| SETUP
+  PKGCFG -->|loaded by| HN
+  SECRETS -->|sourced by| ZSH
+  STATE -->|symlink to| CONFIG
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Key Relationships</h3>
+        <ul>
+          <li><strong>flake.nix → nix/home.nix:</strong> Home Manager module system; nix/home.nix imports all concern-specific modules (packages.nix, zsh.nix, etc.)</li>
+          <li><strong>nix/* → config files:</strong> Each Nix module generates Home Manager configuration that writes files from claude/, copilot/, nvim/, pi/, zsh/ into $HOME</li>
+          <li><strong>setup.sh → Home Manager activation:</strong> Reads current flake.lock and runs <code>home-manager switch --flake . --impure</code> to apply all changes atomically</li>
+          <li><strong>setup.sh doctor → state/nix/profiles/home-manager/home-files:</strong> Compares every link point in $HOME against the current generation to detect drift</li>
+          <li><strong>setup-packages.sh → ~/.config/mohan-dotfiles/packages-config.nix:</strong> Writes user selections (yes/no per package) into configPath; next setup.sh applies it</li>
+          <li><strong>CI/CD checks → flake.nix:</strong> nix flake check --impure runs home eval check, hook regression tests, and setup.sh lint/doctor in sandbox</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="s4">
+      <h2>4 · Domain &amp; Data Model</h2>
+
+      <div class="card">
+        <h3>Domain Model: Core Entities &amp; Relationships</h3>
+        <div class="mermaid-card">
+          <div class="mermaid">
+classDiagram
+    class FlakeConfiguration {
+        +string description
+        +Input nixpkgs
+        +Input homeManager
+        +string system
+        +string username
+        +Check[] checks
+        +homeConfiguration build()
+    }
+
+    class HomeManagerModule {
+        +string moduleName
+        +HomeCfg[] options
+        +string[] imports
+        +void enable()
+    }
+
+    class ConfigFile {
+        +string path
+        +string source
+        +string mode
+        +string user
+        +boolean isSymlink
+    }
+
+    class Generation {
+        +int generationNumber
+        +string timestamp
+        +ConfigFile[] files
+        +string buildPath
+        +void activate()
+    }
+
+    class DriftDetection {
+        +Generation expected
+        +Generation actual
+        +string[] missingFiles
+        +string[] editedFiles
+        +string[] wrongLinks
+        +Report audit()
+    }
+
+    class OptionalPackage {
+        +string name
+        +string description
+        +Derivation derivation
+        +boolean selected
+        +void install()
+    }
+
+    FlakeConfiguration "1" --> "many" HomeManagerModule
+    HomeManagerModule "1" --> "many" ConfigFile
+    Generation "1" --> "many" ConfigFile
+    DriftDetection --> Generation
+    OptionalPackage "many" --> "1" HomeManagerModule
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Data Model: File &amp; State Structure</h3>
+        <div class="mermaid-card">
+          <div class="mermaid">
+erDiagram
+    FLAKE_CONFIG ||--o{ HOME_MANAGER_MODULE : contains
+    HOME_MANAGER_MODULE ||--o{ DERIVATION : builds
+    HOME_MANAGER_MODULE ||--o{ FILE_RULE : defines
+    FILE_RULE ||--o{ CONFIG_FILE : manifests
+    GENERATION ||--o{ CONFIG_FILE : captures
+    XDG_STATE ||--o{ GENERATION : records
+    XDG_STATE ||--o{ PACKAGE_SELECTION : stores
+
+    FLAKE_CONFIG {
+        string inputs_lock
+        string system
+        string username
+        array checks
+    }
+
+    HOME_MANAGER_MODULE {
+        string name
+        string enabled
+        array imports
+    }
+
+    DERIVATION {
+        string outPath
+        string drvPath
+        array dependencies
+    }
+
+    FILE_RULE {
+        string target_path
+        string source_ref
+        string file_mode
+    }
+
+    CONFIG_FILE {
+        string path_in_home
+        string store_path
+        boolean is_symlink
+        datetime written_time
+    }
+
+    GENERATION {
+        int number
+        datetime timestamp
+        string buildPath
+        array config_files
+    }
+
+    XDG_STATE {
+        string base_path
+        string profiles_path
+        string nix_state
+    }
+
+    PACKAGE_SELECTION {
+        string package_name
+        boolean selected
+        datetime updated_time
+    }
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>State Version &amp; Schema</h3>
+        <p><strong>State Version:</strong> 25.05 (set once in nix/home.nix, do not change after first activation; Home Manager uses this to apply state-schema migrations)</p>
+        <p><strong>Configuration Sources:</strong></p>
+        <ul>
+          <li>Version control (flake.nix, nix/*.nix, claude/, copilot/, nvim/, pi/, zsh/) — committed, reproducible, reviewed</li>
+          <li>Machine-local (flake.lock — generated, committed after `nix flake update`; ~/.config/mohan-dotfiles/packages-config.nix — generated by setup-packages.sh, not committed)</li>
+          <li>Secrets outside version control (~/.zshrc.local — sourced last, never committed)</li>
+        </ul>
+        <p><strong>Schema Changes:</strong> None expected for this flake; if nixpkgs updates Home Manager and a migration is needed, nix/home.nix's stateVersion will guide it. Schema is forward-locked by flake.lock pinning.</p>
+      </div>
+    </section>
+
+    <section id="s5">
+      <h2>5 · API Design</h2>
+
+      <div class="card">
+        <h3>CLI Entry Point: setup.sh</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Command</th>
+                <th>Args</th>
+                <th>Input</th>
+                <th>Output</th>
+                <th>Exit Codes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>setup.sh</code></td>
+                <td>(no args)</td>
+                <td>Current flake.nix, flake.lock, nix/*.nix</td>
+                <td>Nix installed (if missing); home config activated; login shell set to zsh; drift audit run; *.hm-backup files for any edits found</td>
+                <td>0 if success; 1 if Nix install fails or drift audit fails</td>
+              </tr>
+              <tr>
+                <td><code>setup.sh doctor</code></td>
+                <td>doctor</td>
+                <td>Current generation symlinks in $HOME</td>
+                <td>Line-by-line report of every managed file (✓ OK, ✗ MISSING/DRIFTED); links checked from ~/.local/state/nix/profiles/home-manager/home-files</td>
+                <td>0 if all files match expected state; 1 if any drift detected</td>
+              </tr>
+              <tr>
+                <td><code>setup.sh upgrade</code></td>
+                <td>upgrade</td>
+                <td>flake.nix</td>
+                <td>Runs <code>nix flake update</code> to bump flake.lock inputs; then runs <code>setup.sh</code>; updates flake.lock in git (user must commit)</td>
+                <td>0 if update + switch success; 1 if update or switch fails</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>CLI Entry Point: setup-packages.sh</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Command</th>
+                <th>Input</th>
+                <th>Output</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>setup-packages.sh</code></td>
+                <td>Current ~/.config/mohan-dotfiles/packages-config.nix (if exists; else defaults to all false)</td>
+                <td>Interactive prompts (yes/no per package); writes selections to ~/.config/mohan-dotfiles/packages-config.nix; user must then run <code>setup.sh</code> to apply</td>
+                <td>One y/n prompt per optional package (Docker, Python, Copilot CLI, etc.); selections persist across re-runs</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Nix CLI Integration (User-Facing)</h3>
+        <p><strong>Note:</strong> Users do not call nix commands directly; setup.sh wraps them. For reference:</p>
+        <pre>
+# What setup.sh runs internally:
+nix flake check --impure                  # validates home eval, hook tests, setup.sh lint/doctor
+home-manager switch -b hm-backup --flake . --impure  # activates config, backs up drifted files
+nix flake update                          # bumps flake.lock (in setup.sh upgrade)
+        </pre>
+        <p>The <code>--impure</code> flag is mandatory because flake.nix reads <code>$USER</code> from the environment at eval time, making outputs account-specific.</p>
+      </div>
+
+      <div class="card">
+        <h3>Sequence Diagram: setup.sh Activation Flow</h3>
+        <div class="mermaid-card">
+          <div class="mermaid">
+sequenceDiagram
+    participant User
+    participant setup.sh
+    participant Nix
+    participant HomeManager as Home Manager
+    participant Store as /nix/store
+    participant Home as $HOME
+
+    User->>setup.sh: ./setup.sh
+    setup.sh->>setup.sh: ensure_repo_location
+    setup.sh->>Nix: nix --version
+    alt Nix not found
+        setup.sh->>Nix: curl determinate-systems installer
+        Nix->>Nix: install Nix daemon
+    end
+
+    setup.sh->>setup.sh: migrate_pre_nix_dotfiles (~/.zshrc.local)
+    setup.sh->>Nix: nix run home-manager -- switch -b hm-backup --flake . --impure
+    Nix->>Nix: eval flake.nix with $USER
+    Nix->>Nix: instantiate all derivations in home.nix tree
+    Nix->>Store: build each module (packages, config files)
+    HomeManager->>Store: fetch activationPackage from Store
+    HomeManager->>Home: create/update symlinks (all managed files)
+    HomeManager->>Home: keep *.hm-backup for any pre-existing hand-edits
+
+    setup.sh->>Home: chsh -s $(which zsh)
+    setup.sh->>setup.sh: doctor (audit all symlinks)
+    alt Drift detected
+        setup.sh->>setup.sh: report MISSING/DRIFTED files
+        setup.sh->>User: exit 1 (drift audit failed)
+    else Clean
+        setup.sh->>User: ✓ Success
+    end
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="s6">
+      <h2>6 · UI/UX</h2>
+
+      <div class="card">
+        <h3>User Journey: Fresh Machine Setup</h3>
+        <div class="mermaid-card">
+          <div class="mermaid">
+flowchart TD
+    START["User has a fresh Linux/WSL machine"]
+    CLONE["git clone git@github.com:MohanTn/mohan-dotfiles.git ~/REPO/mohan-dotfiles"]
+    SETUP_PKG["./setup-packages.sh (choose optional packages)"]
+    ANSWERS["Answer yes/no for: Docker, Python, pipeline-worker, Copilot CLI, LocalScribe"]
+    STORED["Selections written to ~/.config/mohan-dotfiles/packages-config.nix"]
+    SETUP["./setup.sh"]
+    NIX_INSTALL["Nix installed (if missing)"]
+    MIGRATE["Pre-existing ~/.zshrc/.zshenv migrated to ~/.zshrc.local"]
+    ACTIVATE["Home Manager activation (all files symlinked)"]
+    DRIFT["Drift audit (verify all symlinks OK)"]
+    SHELL["Login shell set to zsh"]
+    DONE["✓ Machine fully configured"]
+
+    START --> CLONE
+    CLONE --> SETUP_PKG
+    SETUP_PKG --> ANSWERS
+    ANSWERS --> STORED
+    STORED --> SETUP
+    SETUP --> NIX_INSTALL
+    NIX_INSTALL --> MIGRATE
+    MIGRATE --> ACTIVATE
+    ACTIVATE --> DRIFT
+    DRIFT --> SHELL
+    SHELL --> DONE
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>User Journey: Apply Configuration Changes</h3>
+        <div class="mermaid-card">
+          <div class="mermaid">
+flowchart TD
+    START["User edits nix/zsh.nix or other .nix file"]
+    COMMIT["git add + git commit"]
+    APPLY["./setup.sh"]
+    EVAL["flake.nix evaluated with new content"]
+    BUILD["Home Manager builds new generation"]
+    SYMLINK["Old symlinks replaced with new generation links"]
+    BACKUP["Any hand-edited files saved as *.hm-backup"]
+    AUDIT["Drift audit runs"]
+    OK["✓ Changes applied"]
+
+    START --> COMMIT
+    COMMIT --> APPLY
+    APPLY --> EVAL
+    EVAL --> BUILD
+    BUILD --> SYMLINK
+    SYMLINK --> BACKUP
+    BACKUP --> AUDIT
+    AUDIT --> OK
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Component Hierarchy: Nix Modules → Home Manager Config → $HOME Files</h3>
+        <div class="mermaid-card">
+          <div class="mermaid">
+flowchart TD
+    HN["nix/home.nix (imports all modules)"]
+
+    PKG["nix/packages.nix (nixpkgs selection + activation scripts)"]
+    ZSH["nix/zsh.nix (shell config, oh-my-zsh, prompt)"]
+    GIT["nix/git.nix (git identity, aliases)"]
+    CLAUDE["nix/claude.nix (Claude Code hooks, skills, commands)"]
+    COPILOT["nix/copilot.nix (Copilot CLI config + hooks)"]
+    NVIM["nix/nvim.nix (Neovim LazyVim + symlink to repo)"]
+    PI["nix/pi.nix (Pi agent extensions)"]
+    OPT["nix/optional-packages.nix (Docker, Python, etc.)"]
+
+    HN --> PKG
+    HN --> ZSH
+    HN --> GIT
+    HN --> CLAUDE
+    HN --> COPILOT
+    HN --> NVIM
+    HN --> PI
+    HN --> OPT
+
+    PKG -->|home.packages| HOME1["$HOME/.local/bin/..."]
+    ZSH -->|home.file| HOME2["$HOME/.zshrc (symlink)"]
+    ZSH -->|home.file| HOME3["$HOME/.config/zsh/..."]
+    GIT -->|home.file| HOME4["$HOME/.gitconfig (symlink)"]
+    CLAUDE -->|home.file| HOME5["$HOME/.claude/CLAUDE.md (symlink)"]
+    CLAUDE -->|home.file| HOME6["$HOME/.claude/hooks/... (symlink tree)"]
+    NVIM -->|home.file| HOME7["$HOME/.config/nvim (symlink to repo checkout)"]
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Shell Prompt &amp; Terminal UX</h3>
+        <p><strong>Prompt Design:</strong> zsh/prompt.zsh is a custom from-scratch prompt styled after old CRT monochrome monitors. Every fresh interactive terminal shows a one-line typewriter-animated greeting. The prompt itself:</p>
+        <ul>
+          <li>Shows full working directory (not shortened)</li>
+          <li>Displays git branch with emoji status: 🌿 clean, 🔥 dirty, ↑N/↓N for commits ahead/behind</li>
+          <li>Git status computed in background job (zle -F) so slow repos never block typing; shows spinner (⠋⠙⠹) while pending</li>
+          <li>RPROMPT shows ✅/❌ based on last exit code; ⏱ Ns if command ran 3+ seconds</li>
+          <li>Clock in terminal window title (updated every prompt) instead of repeating per line</li>
+          <li>Each field gets its own step on green phosphor ladder for scannability</li>
+        </ul>
+        <p>Edit zsh/prompt.zsh directly (plain zsh, no Nix escaping) and re-run setup.sh to apply changes.</p>
+      </div>
+    </section>
+
+    <section id="s7">
+      <h2>7 · Behaviour — State &amp; Process</h2>
+
+      <div class="card">
+        <h3>Configuration Lifecycle State Machine</h3>
+        <div class="mermaid-card">
+          <div class="mermaid">
+stateDiagram-v2
+    [*] --> CleanHome: Fresh machine or setup.sh run
+
+    CleanHome: All files are Nix-managed symlinks
+    CleanHome --> DriftedHome: User edits ~/.zshrc, ~/.gitconfig, etc. by hand
+
+    DriftedHome: Hand-edited files replaced Nix symlinks
+    DriftedHome --> DetectedByDoctor: ./setup.sh doctor scans and finds mismatches
+
+    DetectedByDoctor: Doctor reports MISSING/DRIFTED files
+    DetectedByDoctor --> ReviewedByUser: User sees *.hm-backup files
+
+    ReviewedByUser: User reviews changes (hand-edit vs Nix intent)
+    ReviewedByUser --> CleanHome: ./setup.sh re-links, saves edits as *.hm-backup
+
+    CleanHome --> ModifiedConfig: User edits nix/zsh.nix or other .nix file in repo
+    ModifiedConfig --> CommittedChange: git commit
+    CommittedChange --> NewGeneration: ./setup.sh (Home Manager builds + activates new generation)
+    NewGeneration --> CleanHome
+
+    CleanHome --> UpdateFlakeLock: ./setup.sh upgrade (nix flake update)
+    UpdateFlakeLock --> BumpedVersions: flake.lock pins updated to latest nixpkgs/home-manager
+    BumpedVersions --> NewGeneration
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Main Process Flow: setup.sh Execution</h3>
+        <div class="mermaid-card">
+          <div class="mermaid">
+flowchart TD
+    A["setup.sh (no args) invoked"] --> B["ensure_repo_location: verify ~/REPO/mohan-dotfiles"]
+    B --> C{Correct path?}
+    C -->|No| D["Exit 1: wrong location"]
+    C -->|Yes| E["ensure_nix: check if nix installed"]
+    E --> F{Nix found?}
+    F -->|No| G["Install Nix via Determinate Systems"]
+    G --> H["Source nix daemon profile"]
+    F -->|Yes| H
+    H --> I["migrate_pre_nix_dotfiles: fold ~/.zshrc/~/.zshenv into ~/.zshrc.local"]
+    I --> J["switch: run home-manager switch --impure"]
+    J --> K["Home Manager evaluates flake.nix with $USER"]
+    K --> L["Build all derivations + symlink $HOME/..."]
+    L --> M["ensure_login_shell: set login shell to zsh"]
+    M --> N["doctor: audit all symlinks"]
+    N --> O{All files OK?}
+    O -->|Yes| P["Exit 0: setup complete"]
+    O -->|No| Q["Exit 1: drift detected"]
+
+    J --> R["Any hand-edits saved as *.hm-backup"]
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Error &amp; Recovery Scenarios</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Scenario</th>
+                <th>Detection</th>
+                <th>User Impact</th>
+                <th>Recovery</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>User manually edits ~/.zshrc</td>
+                <td>setup.sh doctor detects: <code>readlink -f $HOME/.zshrc</code> does not match expected store path</td>
+                <td>~/.zshrc is no longer a symlink; it is a hand-written copy. doctor reports DRIFTED</td>
+                <td>Run setup.sh (with no args) to re-link; hand-edited copy is saved as ~/.zshrc.hm-backup</td>
+              </tr>
+              <tr>
+                <td>File is accidentally deleted (e.g., rm ~/.gitconfig)</td>
+                <td>setup.sh doctor detects: <code>readlink -f $HOME/.gitconfig</code> fails (file does not exist)</td>
+                <td>doctor reports MISSING; git config is lost until re-linked</td>
+                <td>Run setup.sh to restore symlink from current generation</td>
+              </tr>
+              <tr>
+                <td>Nix eval fails (bad syntax in nix/zsh.nix)</td>
+                <td>home-manager switch fails during eval phase with error message naming the offending file and line</td>
+                <td>setup.sh exits 1; no changes applied; current generation still intact</td>
+                <td>User fixes syntax error in nix/*.nix, commits, and re-runs setup.sh</td>
+              </tr>
+              <tr>
+                <td>Network failure during Nix install</td>
+                <td>curl to install.determinate.systems fails; ensure_nix returns 1</td>
+                <td>setup.sh exits 1; Nix not installed; machine is only partially set up</td>
+                <td>Retry setup.sh once network is restored; ensure_nix skips if nix is already in PATH</td>
+              </tr>
+              <tr>
+                <td>Home Manager generation becomes corrupted</td>
+                <td>doctor scans symlinks; one or more readlink -f calls return wrong path or broken link</td>
+                <td>doctor reports drift; affected files cannot be trusted</td>
+                <td>Run setup.sh to rebuild and activate latest generation; flake.lock pins all packages so rebuild is deterministic</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="s8">
+      <h2>8 · Deployment — Installation, Activation &amp; Updates</h2>
+
+      <div class="card">
+        <h3>Deployment Architecture: Flake → Home Manager → Store Symlinks</h3>
+        <div class="mermaid-card">
+          <div class="mermaid">
+graph LR
+    A["Developer edits<br/>nix/zsh.nix"]
+    B["git commit<br/>+ git push"]
+    C["GitHub CI:<br/>nix flake check"]
+    D{Pass?}
+    E["Merge PR"]
+    F["setup.sh<br/>on user machine"]
+    G["nix flake lock<br/>flake.nix + flake.lock"]
+    H["home-manager switch<br/>--flake . --impure"]
+    I["nix eval<br/>flake.nix with $USER"]
+    J["Build all<br/>derivations"]
+    K["/nix/store<br/>symlink targets"]
+    L["Home Manager<br/>activation package"]
+    M["Create symlinks:<br/>~/.zshrc → store"]
+    N["~/.local/state/<br/>nix/profiles/"]
+    O["Activate new<br/>generation"]
+
+    A --> B
+    B --> C
+    C --> D
+    D -->|Yes| E
+    E --> F
+    F --> G
+    G --> H
+    H --> I
+    I --> J
+    J --> K
+    K --> L
+    L --> M
+    M --> N
+    N --> O
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Flake Check Pipeline (CI/CD)</h3>
+        <p>Every push to GitHub triggers <code>.github/workflows/ci.yml</code>, which runs four checks. All must pass before merge:</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Check</th>
+                <th>Command</th>
+                <th>Purpose</th>
+                <th>Failure Outcome</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>home-eval</strong></td>
+                <td><code>nix flake check --impure</code> (checks.home)</td>
+                <td>Instantiate (not build) every derivation in the home config tree; validates all Nix syntax, Home Manager options, and file references without downloading gigabytes of GUI libraries</td>
+                <td>PR blocked; error message shows the offending module and line</td>
+              </tr>
+              <tr>
+                <td><strong>claude-hooks-selftest</strong></td>
+                <td><code>nix flake check --impure</code> (checks.hooks-selftest)</td>
+                <td>Run claude/hooks/test-hook.sh selftest in a sandbox HOME with JSON payloads on stdin, verifying all hook guards and transformations work correctly</td>
+                <td>PR blocked; hook behavior is untrusted</td>
+              </tr>
+              <tr>
+                <td><strong>copilot-hooks-selftest</strong></td>
+                <td><code>nix flake check --impure</code> (checks.copilot-hooks-selftest)</td>
+                <td>Run copilot/hooks/test-hook.sh selftest (shell port) in sandbox, verifying Copilot CLI hook equivalents work</td>
+                <td>PR blocked; Copilot hook port is out of sync</td>
+              </tr>
+              <tr>
+                <td><strong>setup-script</strong></td>
+                <td><code>nix flake check --impure</code> (checks.setup-script)</td>
+                <td>Lint setup.sh (bash -n, shellcheck), then run setup.sh doctor against a synthetic Home Manager profile (clean, hand-edited, deleted) to verify drift detection works</td>
+                <td>PR blocked; setup.sh has syntax errors or doctor is broken</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Nix Modules &amp; Derivations</h3>
+        <p><strong>Key Modules (nix/*):</strong></p>
+        <ul>
+          <li><strong>packages.nix:</strong> home.packages list (all CLI tools, utilities); activation scripts for npm global CLI and native Nix post-activation hooks</li>
+          <li><strong>zsh.nix:</strong> home.sessionVariables, home.file entries for managed zsh config, oh-my-zsh config, symlink to zsh/prompt.zsh</li>
+          <li><strong>git.nix:</strong> programs.git options (user name/email, aliases, core settings)</li>
+          <li><strong>claude.nix:</strong> home.file entries for ~/.claude/ tree (CLAUDE.md, hooks, skills, commands, agents)</li>
+          <li><strong>copilot.nix:</strong> home.file entries for ~/.copilot/ tree (copilot-instructions.md, hooks, agents, skills) — shell port of claude/</li>
+          <li><strong>nvim.nix:</strong> home.file with symlink from ~/.config/nvim directly to ~/REPO/mohan-dotfiles/nvim (LazyVim checkout)</li>
+          <li><strong>pi.nix:</strong> home.file entries for ~/.pi/agent/extensions/ (TypeScript hooks + pipeline-panel dashboard)</li>
+        </ul>
+        <p><strong>Output Locations:</strong> All derivations are built to /nix/store; Home Manager reads from store and creates symlinks in ~/.local/state/nix/profiles/home-manager/home-files/, then links those into $HOME/.* paths.</p>
+      </div>
+
+      <div class="card">
+        <h3>Versioning &amp; State Lock (flake.lock)</h3>
+        <p><strong>flake.lock:</strong> Records exact git revisions for nixpkgs (release-25.05) and home-manager (release-25.05). Committed to the repo. Every setup.sh run reads flake.lock and fetches exactly those versions, ensuring reproducibility across machines and time.</p>
+        <p><strong>Bumping versions:</strong> Run <code>setup.sh upgrade</code>, which executes <code>nix flake update</code> (updates flake.lock), then setup.sh (applies new versions). User must <code>git add flake.lock && git commit</code> to finalize.</p>
+        <p><strong>stateVersion:</strong> Home Manager migration tracking (set in nix/home.nix to 25.05). Do not change after first activation; Home Manager uses this to apply state schema migrations on future minor versions.</p>
+      </div>
+
+      <div class="card">
+        <h3>Post-Activation Hooks &amp; Scripts</h3>
+        <p>Home Manager supports activation scripts that run after all files are symlinked. nix/packages.nix defines:</p>
+        <ul>
+          <li><strong>npm global CLI setup:</strong> Installs packages to $HOME/.npm-global (Claude Code, pipeline-worker CLI) if missing; native activation script runs post-activation</li>
+          <li><strong>Claude Code native setup:</strong> Installs Claude Code via official installer (not Nix) if missing; runs only once</li>
+        </ul>
+        <p>These run idempotently; they check if the binary already exists before downloading.</p>
+      </div>
+    </section>
+
+    <section id="s9">
+      <h2>9 · Monitoring &amp; Alerts</h2>
+
+      <div class="card">
+        <h3>Health Checks &amp; Observability</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Check</th>
+                <th>Command</th>
+                <th>Metric / Output</th>
+                <th>Target SLO</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Configuration drift audit</strong></td>
+                <td><code>setup.sh doctor</code></td>
+                <td>Number of MISSING/DRIFTED files; exit code 0 (clean) or 1 (drift); human-readable line per file</td>
+                <td>0 drifted files on every audit; < 2 second scan time</td>
+              </tr>
+              <tr>
+                <td><strong>Nix flake evaluation</strong></td>
+                <td><code>nix flake check --impure</code></td>
+                <td>all four checks (home-eval, claude-hooks-selftest, copilot-hooks-selftest, setup-script) pass with no warnings</td>
+                <td>100% pass rate on every commit; < 60 second CI duration</td>
+              </tr>
+              <tr>
+                <td><strong>Home Manager activation</strong></td>
+                <td><code>home-manager switch --flake . --impure</code></td>
+                <td>Exit code 0; all symlinks created successfully; < 5 minute total duration (including Nix install on first run)</td>
+                <td>100% successful activations; < 2 minutes on subsequent runs</td>
+              </tr>
+              <tr>
+                <td><strong>Generated files integrity</strong></td>
+                <td><code>find ~/.local/state/nix/profiles/home-manager/home-files -type l</code></td>
+                <td>Count of symlinks; all point to /nix/store paths; no broken links</td>
+                <td>100+ symlinks (exact count varies by modules enabled); 0 broken</td>
+              </tr>
+              <tr>
+                <td><strong>State directory permissions</strong></td>
+                <td><code>ls -la ~/.local/state/nix/ && ls -la ~/.local/state/claude-hooks/</code></td>
+                <td>Owner is $USER; mode 700; no unexpected files</td>
+                <td>Accessible only to user account; no world-readable secrets</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Alert Scenarios</h3>
+        <p><strong>setup.sh doctor reports drift:</strong> One or more managed files have been edited outside Nix or deleted. Recovery: run setup.sh (with no args) to re-link; hand-edits are saved as *.hm-backup. Review the backup, merge any necessary changes back into the .nix source, commit, and re-run setup.sh.</p>
+        <p><strong>nix flake check fails:</strong> One or more CI checks failed (usually a Nix syntax error or hook test regression). Recovery: fix the offending .nix file or test case, commit, and push; CI re-runs automatically.</p>
+        <p><strong>home-manager switch fails:</strong> Activation package failed to build or activate (e.g., missing dependency, permission error). Recovery: run setup.sh doctor to see current state; if broken, check for partial symlinks or /nix/store path issues; retry setup.sh once root cause is fixed.</p>
+        <p><strong>Nix install fails:</strong> Network or installer issue. Recovery: retry setup.sh once network is restored; ensure_nix is idempotent and skips if nix is already in PATH.</p>
+      </div>
+
+      <div class="card">
+        <h3>Incident Flow (Drift Detected → Resolution)</h3>
+        <div class="mermaid-card">
+          <div class="mermaid">
+sequenceDiagram
+    participant User
+    participant Doctor as setup.sh doctor
+    participant FS as File System
+    participant Store as /nix/store
+
+    User->>Doctor: Run setup.sh doctor
+    Doctor->>FS: Scan ~/.local/state/nix/profiles/home-manager/home-files
+    FS-->>Doctor: List of symlinks
+    loop For each symlink
+        Doctor->>FS: readlink -f $HOME/path/to/file
+        FS-->>Doctor: store path or broken link
+        alt Link matches expected store path
+            Doctor-->>Doctor: ✓ OK
+        else Link does not match
+            Doctor-->>Doctor: ✗ DRIFTED (hand-edit detected)
+        end
+    end
+
+    Doctor-->>User: Report: MISSING files + DRIFTED files + OK count
+    alt Drift found
+        User->>User: Review *.hm-backup files
+        User->>User: Edit nix/zsh.nix (or other source) to fix
+        User->>User: git commit
+        User->>User: ./setup.sh (re-link + audit)
+        User->>Doctor: Run setup.sh doctor again
+        Doctor-->>User: ✓ All clean
+    else No drift
+        Doctor-->>User: ✓ No issues
+    end
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Dashboard &amp; Observability Tools</h3>
+        <p><strong>Manual observability (no automated dashboard):</strong> Users run setup.sh doctor on demand to audit current state. Output is human-readable and actionable. Future enhancement could integrate with monitoring systems (e.g., log drift events to syslog, expose health endpoint), but currently drift detection is manual and advisory only.</p>
+        <p><strong>CI/CD observability:</strong> GitHub Actions logs show each check result; PR status blocks merge if any check fails. No external monitoring tool is used; results are visible in the PR UI.</p>
+      </div>
+    </section>
+
+    <section id="s10">
+      <h2>10 · Open Questions, Decisions &amp; Risks</h2>
+
+      <div class="card">
+        <h3>Open Questions</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Question</th>
+                <th>Why It Matters</th>
+                <th>Proposed Default</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>OQ1</strong></td>
+                <td>Should setup.sh upgrade also commit flake.lock changes to git, or require manual <code>git add flake.lock && git commit</code>?</td>
+                <td>Automation vs. deliberate control: auto-commit could silently bump versions without explicit review; manual commit requires discipline but prevents accidental merges</td>
+                <td>Manual commit (current). User reviews flake.lock diff before committing, ensuring intended updates only</td>
+                <td>Open — workflow works; could streamline if desired</td>
+              </tr>
+              <tr>
+                <td><strong>OQ2</strong></td>
+                <td>Should hook tests (claude/hooks/test-hook.sh, copilot/hooks/test-hook.sh) be run on every setup.sh, or only on CI?</td>
+                <td>Performance on user machines: running in sandbox adds 5-10 seconds per setup.sh run; users may want faster deploys for config tweaks</td>
+                <td>Only on CI (current). setup.sh delegates hook validation to CI; machines run setup.sh faster for rapid iteration</td>
+                <td>Open — could add --skip-checks flag if performance becomes an issue</td>
+              </tr>
+              <tr>
+                <td><strong>OQ3</strong></td>
+                <td>Should ~/.claude/settings.json and ~/.copilot/settings.json be Nix-managed (read-only symlinks) or writable files?</td>
+                <td>Runtime vs. deployment-time config: Claude Code and Copilot CLI write permission grants to settings.json at runtime; read-only symlinks would prevent this</td>
+                <td>Writable files (current). These files are not symlinks; they are readable/writable copies that Claude Code and Copilot CLI edit. Not tracked by Nix, not synced across machines. Decision documented in CLAUDE.md as a deployment exception</td>
+                <td>Resolved — explicit exception made and documented</td>
+              </tr>
+              <tr>
+                <td><strong>OQ4</strong></td>
+                <td>Should NixOS system-level configuration (system packages, kernel settings, etc.) ever be added to this flake?</td>
+                <td>Scope creep: this is a Home Manager flake (user-level only). Adding system config would require NixOS and root access, breaking the non-NixOS/WSL use case</td>
+                <td>No (out of scope). This flake is Home Manager only. For NixOS machines, a separate system flake would be needed</td>
+                <td>Resolved — scope bounded in "Out of Scope" section of Section 2</td>
+              </tr>
+              <tr>
+                <td><strong>OQ5</strong></td>
+                <td>Should setup-packages.sh persist selections in git (version-controlled) or machine-local only?</td>
+                <td>Reproducibility vs. flexibility: if selections are committed, every machine gets the same packages; if local, machines can customize (Docker on dev, not on minimal)</td>
+                <td>Machine-local only (current). Selections written to ~/.config/mohan-dotfiles/packages-config.nix (git-ignored), allowing per-machine customization while keeping the repo agnostic</td>
+                <td>Resolved — documented in Section 1 "Where things are configured"</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Architectural Decisions</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Decision</th>
+                <th>Options Considered</th>
+                <th>Chosen &amp; Rationale</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>ADR1: Home Manager vs. NixOS</strong></td>
+                <td>(A) Full NixOS system flake; (B) Home Manager only on non-NixOS systems; (C) Hybrid (NixOS + Home Manager)</td>
+                <td><strong>Chosen: (B)</strong> Home Manager only. Rationale: Mohan uses Linux/WSL (non-NixOS) workstations. NixOS requires system-level access and is overkill for user-level config. Home Manager is portable, lightweight, and sufficient. NixOS machines would need a separate flake.</td>
+                <td>Project inception</td>
+              </tr>
+              <tr>
+                <td><strong>ADR2: Symlink-based immutability</strong></td>
+                <td>(A) Copy files, allow edits, sync back on setup.sh; (B) Symlinks (read-only store), detect/reject drift; (C) Watch files + auto-sync</td>
+                <td><strong>Chosen: (B)</strong> Read-only symlinks + drift detection. Rationale: Makes the contract explicit: config lives in nix/ and git, live files are read-only. Drift detection (doctor) alerts without silently clobbering user edits. *.hm-backup preserves hand-edits for review. Simpler than watches and more intentional than auto-sync.</td>
+                <td>Project inception</td>
+              </tr>
+              <tr>
+                <td><strong>ADR3: setup.sh as single CLI entry point</strong></td>
+                <td>(A) Multiple scripts (setup.sh, apply.sh, doctor.sh, upgrade.sh); (B) One setup.sh with subcommands; (C) Nix flake commands (nix run .#setup, etc.)</td>
+                <td><strong>Chosen: (B)</strong> setup.sh with subcommands (doctor, upgrade). Rationale: Familiar bash pattern, works without Nix in PATH initially, no need to understand flake apps. shell history shows setup.sh doctor (clear intent) better than nix run .#doctor (indirection). setup.sh is the contract between user and system.</td>
+                <td>Early development</td>
+              </tr>
+              <tr>
+                <td><strong>ADR4: Hook porting across tools</strong></td>
+                <td>(A) One hook implementation per tool (Claude, Copilot, Pi); (B) Single implementation, adapt at call site; (C) Shared library (Nix module or shell lib)</td>
+                <td><strong>Chosen: (A)</strong> Three ports (shell bash for Claude/Copilot, TypeScript for Pi). Rationale: Each tool has its own hook/extension API (JSON payloads differ, return formats differ). Porting gives us tool-specific ergonomics and error handling. Keeps ports in sync via documented rules in CLAUDE.md. Single implementation would be more complex abstraction than three targeted versions.</td>
+                <td>Feature expansion</td>
+              </tr>
+              <tr>
+                <td><strong>ADR5: --impure flake eval</strong></td>
+                <td>(A) Pure flake (--pure), read username from default file (complex); (B) --impure with $USER at eval time (current); (C) Parameterized username via flake args</td>
+                <td><strong>Chosen: (B)</strong> --impure with builtins.getEnv "USER". Rationale: Simplest pragmatic solution. Flake is not "pure" in the academic sense (depends on env), but it is deterministic given the same $USER and flake.lock. Avoids verbose configuration per machine. Trade-off documented in flake.nix comments and README (--impure is required).</td>
+                <td>Early development</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Risks &amp; Mitigations</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Risk</th>
+                <th>Likelihood</th>
+                <th>Impact</th>
+                <th>Mitigation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>R1: flake.lock drift</strong> (user runs nix flake update without committing, then clones on another machine with old flake.lock)</td>
+                <td>Low</td>
+                <td>High (machines get different packages; reproducibility lost)</td>
+                <td>Enforce: setup.sh upgrade requires explicit git commit. CI checks that flake.lock is committed. CLAUDE.md documents the contract. User discipline.</td>
+              </tr>
+              <tr>
+                <td><strong>R2: Secrets in repo</strong> (user accidentally commits ~/.zshrc.local or GitHub token to git)</td>
+                <td>Low</td>
+                <td>Critical (credentials exposed)</td>
+                <td>~/.zshrc.local is in .gitignore. Setup.sh migrate_pre_nix_dotfiles warns about hand-written files. CLAUDE.md explicitly lists that secrets go in ~/.zshrc.local, never in Nix. User discipline + git pre-commit hooks (not yet implemented).</td>
+              </tr>
+              <tr>
+                <td><strong>R3: Home Manager breaking change</strong> (home-manager release-25.05 introduces schema migration that breaks stateVersion 25.05)</td>
+                <td>Very Low</td>
+                <td>High (activation fails; user config broken)</td>
+                <td>stateVersion is pinned and intentionally immutable. Home Manager project maintains backward compat within a release series. If upgrade needed, user bumps stateVersion + runs setup.sh; schema migration runs automatically.</td>
+              </tr>
+              <tr>
+                <td><strong>R4: Nix install failure</strong> (Determinate Systems installer is unavailable or changed)</td>
+                <td>Low</td>
+                <td>High (new machine setup blocked)</td>
+                <td>Fallback: document alternative Nix installers (NixOS.org official, Nixpkgs multi-platform). setup.sh ensure_nix checks PATH first, so pre-installed Nix is used if available. Manual install is always possible.</td>
+              </tr>
+              <tr>
+                <td><strong>R5: Large /nix/store growth</strong> (multiple generations accumulate; disk fills)</td>
+                <td>Medium</td>
+                <td>Medium (disk space exhausted, setup.sh fails)</td>
+                <td>Home Manager stores old generations in ~/.local/state/nix/profiles/. User can manually run nix-collect-garbage to clean old generations. Document in README (not yet implemented).</td>
+              </tr>
+              <tr>
+                <td><strong>R6: Drift detection false positives</strong> (setup.sh doctor reports drifted file when symlink is actually correct)</td>
+                <td>Very Low</td>
+                <td>Low (confusing output, but re-running setup.sh resolves it)</td>
+                <td>doctor compares readlink -f output for exactness. Symlinks are created by Home Manager, so link targets are deterministic and testable. Hook tests validate doctor logic; CI runs doctor tests on every commit.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Future Enhancements</h3>
+        <ul>
+          <li><strong>Automated garbage collection:</strong> setup.sh could run nix-collect-garbage --delete-older-than 30d to keep /nix/store under a size threshold</li>
+          <li><strong>Distributed machine state:</strong> Sync ~/.zshrc.local (or parts of it) across machines via encrypted Git repo or secure key-value store</li>
+          <li><strong>Pre-commit hooks:</strong> Add .git/hooks/pre-commit to scan for committed secrets (GitHub token, AWS keys) before allowing push</li>
+          <li><strong>Automated drift repair:</strong> setup.sh doctor with --auto-repair flag to fix drifts without user interaction (currently user runs setup.sh)</li>
+          <li><strong>Machine onboarding wizard:</strong> Interactive TUI that guides setup-packages.sh and setup.sh in sequence</li>
+          <li><strong>Declarative optional package groups:</strong> Define "base" (minimal), "dev" (Docker, Python), "enterprise" (Copilot, LocalScribe) groups; user selects group instead of individual y/n</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+  </script>
+
+  <script>
+    const toc = document.getElementById('toc');
+    const sections = document.querySelectorAll('section[id^="s"]');
+
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          const link = toc.querySelector(`a[href="#${id}"]`);
+          toc.querySelectorAll('a').forEach(a => a.classList.remove('active'));
+          if (link) link.classList.add('active');
+        }
+      });
+    }, { threshold: 0.3, rootMargin: '-50% 0px -50% 0px' });
+
+    sections.forEach(section => observer.observe(section));
+
+    toc.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', e => {
+        e.preventDefault();
+        const target = document.querySelector(link.getAttribute('href'));
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  </script>
+</body>
+</html>
