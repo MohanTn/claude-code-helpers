@@ -192,6 +192,7 @@
       font-weight: 600;
       color: var(--text);
       font-size: 0.9rem;
+      white-space: nowrap;
     }
 
     table td {
@@ -199,6 +200,7 @@
       border-bottom: 1px solid var(--border);
       color: var(--text);
       font-size: 0.95rem;
+      white-space: nowrap;
     }
 
     table tbody tr:nth-child(even) {
@@ -220,11 +222,73 @@
       justify-content: center;
       align-items: center;
       min-height: 400px;
+      position: relative;
     }
 
     .mermaid {
       display: flex;
       justify-content: center;
+    }
+
+    .diagram-toggle-btn {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      width: 2rem;
+      height: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-size: 1rem;
+      line-height: 1;
+      cursor: pointer;
+      z-index: 2;
+      transition: all 0.2s;
+    }
+
+    .diagram-toggle-btn:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .diagram-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
+      z-index: 999;
+    }
+
+    .diagram-backdrop.active {
+      display: block;
+    }
+
+    body.diagram-lock {
+      overflow: hidden;
+    }
+
+    .mermaid-card.diagram-maximized {
+      position: fixed;
+      inset: 2rem;
+      z-index: 1000;
+      overflow: auto;
+      box-shadow: 0 25px 70px rgba(0, 0, 0, 0.35);
+    }
+
+    .mermaid-card.diagram-maximized .mermaid {
+      width: 100%;
+      height: 100%;
+    }
+
+    .mermaid-card.diagram-maximized .mermaid svg {
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 100% !important;
+      max-height: 100% !important;
     }
 
     pre, code {
@@ -295,7 +359,7 @@
       margin-top: 2rem;
     }
 
-    section, .card, td, th {
+    section, .card {
       overflow-wrap: break-word;
       word-break: break-word;
     }
@@ -468,6 +532,84 @@
         }
       });
     });
+  </script>
+
+  <script>
+    document.querySelectorAll('table').forEach(table => {
+      if (table.closest('.table-wrap')) return;
+      const wrap = document.createElement('div');
+      wrap.className = 'table-wrap';
+      table.parentNode.insertBefore(wrap, table);
+      wrap.appendChild(table);
+    });
+  </script>
+
+  <script>
+    (function () {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'diagram-backdrop';
+      document.body.appendChild(backdrop);
+
+      let activeCard = null;
+
+      function minimize(card) {
+        card.classList.remove('diagram-maximized');
+        const btn = card.querySelector('.diagram-toggle-btn');
+        if (btn) {
+          btn.textContent = '⛶';
+          btn.title = 'Maximize diagram';
+        }
+        backdrop.classList.remove('active');
+        document.body.classList.remove('diagram-lock');
+        activeCard = null;
+      }
+
+      function maximize(card) {
+        if (activeCard && activeCard !== card) minimize(activeCard);
+        card.classList.add('diagram-maximized');
+        const btn = card.querySelector('.diagram-toggle-btn');
+        if (btn) {
+          btn.textContent = '✕';
+          btn.title = 'Minimize diagram';
+        }
+        backdrop.classList.add('active');
+        document.body.classList.add('diagram-lock');
+        activeCard = card;
+      }
+
+      document.querySelectorAll('div.mermaid').forEach(diagram => {
+        let card = diagram.closest('.mermaid-card');
+        if (!card) {
+          card = document.createElement('div');
+          card.className = 'mermaid-card';
+          diagram.parentNode.insertBefore(card, diagram);
+          card.appendChild(diagram);
+        }
+        if (card.querySelector('.diagram-toggle-btn')) return;
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'diagram-toggle-btn';
+        btn.textContent = '⛶';
+        btn.title = 'Maximize diagram';
+        btn.addEventListener('click', () => {
+          if (card.classList.contains('diagram-maximized')) {
+            minimize(card);
+          } else {
+            maximize(card);
+          }
+        });
+        card.appendChild(btn);
+      });
+
+      backdrop.addEventListener('click', () => {
+        if (activeCard) minimize(activeCard);
+      });
+
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && activeCard) minimize(activeCard);
+      });
+    })();
   </script>
 </body>
 </html>
