@@ -1,183 +1,165 @@
-# arch: Feature architecture template via JSON → HTML injection
+# arch: Co-authored shared-understanding document via JSON → HTML injection
 
-Generate feature architecture as structured JSON (injected into HTML template by a deterministic script, not regenerated each pass).
+Take a concept the user has in mind, describe it back grounded in the real code, and expose every claim, fork, tension, and expected behaviour so the user can **co-author** the shared model with you **before any implementation**. The deliverable is a synced mental model that makes the eventual code 90%+ compliant with what the user actually meant, not a spec. You generate structured JSON; a deterministic script (`arch-inject.js`) injects it into the HTML template — you never rewrite the template.
+
+**Prime directive:** the reader must be able to tell, quickly, where you understood their idea and where you drifted, and must be able to *fix* it in place, not just reject it. Optimise for legible understanding and honest uncertainty. A confident wrong claim is the worst outcome; a claim tagged `assumed / low`, a surfaced fork, or a rejected example that the user corrects is a success.
+
+The rendered document is a two-author surface: the user confirms/corrects/**forks** claims, **adds claims you missed**, resolves **tensions** you found in the code, signs off **acceptance examples**, writes success **in their own words**, and exports it all as a structured review. Your JSON must give them enough real material to do that.
 
 ---
 
 ## Operating modes
 
-**Mode A — First draft.** No `arch-<slug>.html` exists for this feature in the working directory.
-1. Generate content for sections 0–10 as clean HTML fragments (no full-page HTML, just `<div>`, `<table>`, `<pre>` content), plus a single `aiOverview` summary and a structured `openQuestions` array (see below).
-2. Assemble a JSON structure with metadata (title, status, version) and section HTML.
-3. Save JSON to `arch-<slug>.json` (temporary, used by injection script).
-4. Run `node ~/.agents/skills/arch/arch-inject.js arch-<slug>.json arch-<slug>.html` to generate the final HTML.
-5. Delete the temporary JSON file.
-6. Status: DRAFT, version v1, first revision log entry.
+**Mode A — First draft.** No `arch-<slug>.html` exists in the working directory.
+1. Research the repo (see below), then produce: `aiOverview`; the `understanding` claim list (Section 5); `tensions` (Section 6); `examples` (Section 4); `openQuestions`; and HTML fragments for sections 1, 2, 3, 7, 9, 10.
+2. Assemble JSON, save to `arch-<slug>.json` (temporary).
+3. Run `node ~/.agents/skills/arch/arch-inject.js arch-<slug>.json arch-<slug>.html`.
+4. Delete the temporary JSON. Status DRAFT, version v1, first revision-log row.
 
-**Mode B — Refinement pass.** An `arch-<slug>.html` already exists and the user provides feedback.
-1. Extract metadata from the HTML file (version, status, revision log) by parsing the template strings or reading the control section.
-2. Generate new content for affected sections 0–10 as HTML fragments, updating `aiOverview` and `openQuestions` if the feature shape changed.
-3. Assemble updated JSON (increment version, add revision log row, keep status as-is).
-4. Run injection script with updated JSON.
-5. Delete temporary JSON.
+**Mode B — Refinement pass.** `arch-<slug>.html` exists and the user pastes the doc's **“Copy review for the AI”** block. It contains: their SUCCESS STATEMENT, CONFIRMED CLAIMS, FORK CHOICES, CORRECTIONS (each tagged `structured` or `prose`), NEW CLAIMS YOU ADDED, TENSIONS resolutions, ACCEPTANCE EXAMPLES (approved / rejected / unreviewed), OPEN QUESTION ANSWERS, and UNREVIEWED items.
+1. Read the existing HTML for current version/status/revision log.
+2. Apply the whole review: reconcile your `aiOverview` against their success statement (if they diverge, that gap is the priority); resolve each fork to the chosen reading; apply every correction; turn each NEW claim into a proper `understanding` entry (`source: user`); apply tension resolutions; fix or drop rejected examples; fold answers into the affected surfaces. Re-tag anything the user confirmed as `source: user, confidence: high`.
+3. Increment version, add a revision-log row naming what changed, keep status unless the user approves.
+4. Re-run the injection script; delete the temporary JSON.
 
-**Derive `<slug>`** from $ARGUMENTS lowercased, spaces→hyphens (e.g. "user auth workflow" → `user-auth-workflow`).
-
-**Before generating:** research repo stack and conventions; invent concrete values (UUIDs, JWTs, paths, table names). Unknown values: assume in Section 1, question in Section 10.
+**Derive `<slug>`** from $ARGUMENTS: a few words, lowercased, spaces→hyphens (e.g. "billing retry logic" → `billing-retry-logic`).
 
 ---
 
-## ⛔ Completeness contract (MANDATORY)
+## Before generating (research, don't guess)
 
-1. **Every section 0–10 must be fully populated** with concrete, feature-specific content. No empty sections, no "TBD", no one-liners.
-2. **No placeholder strings** in output: `TODO`, `TBD`, `[PLACEHOLDER]`, `FIXME`, `...`, `lorem ipsum`, `XXX`. If you don't know a value, invent a realistic one and note the assumption.
-3. **Minimum substance per section:** every section has at least one fully-rendered table, list, diagram, or code block.
-4. **Every diagram is valid Mermaid** for its declared type and renders without error.
-5. **No vague phrases:** "etc.", "as needed", "various", "could", "TBD", undefined acronyms, unquantified NFRs are forbidden in body text. Ambiguities go in Section 10 (Open Questions) as specific questions with proposed defaults.
-6. **Concrete over generic:** tie content to this feature and this repo's real components/endpoints/tables, not examples.
+- Read the actual code the concept touches. Every Section 2 claim, every `source: code` claim, and every tension must be grounded in a real file/function — cite it in `evidence`.
+- Reuse the repo's real names, paths, and patterns. Never do web research; invent realistic concrete values only for illustration and label them as assumptions.
+- If you can't verify something, say so: tag the claim `assumed` / `low`, raise an Open Question, or fork it. Never launder a guess into a confident statement.
 
 ---
 
-## AI Overview (the `aiOverview` field, not a numbered section)
+## ⛔ Honesty & completeness contract (MANDATORY)
 
-Write **one** condensed, human-readable paragraph (or short list) that is the single best summary of what will be implemented: the feature, the approach, the key components touched. This is the only place the full narrative gets restated — Sections 1–9 should stick to their own concern (data model, API, deployment, etc.) instead of re-explaining the feature from scratch each time. It renders in a highlighted card at the very top of the document, above Document Control, so the user reads it first.
-
----
-
-## Section content requirements (generate these as clean HTML fragments)
-
-Generate each section's content as a standalone HTML fragment (no `<section>` wrapper, no `<h2>`, those are in the template). The fragment is injected into `{{SECTION_N_CONTENT}}`.
-
-Each section must contain:
-
-**Section 0 (Document Control)** — *Template supplies status banner and approval gate; you supply revision log rows only.*
-- Revision log: a series of `<tr>` rows (no `<table>` wrapper). Each row: Version, Date, Summary of change, Driven by.
-- Inject into `{{REVISION_LOG_ROWS}}`.
-- Example row: `<tr><td>v1</td><td>2026-07-11</td><td>Initial draft</td><td>First generation</td></tr>`
-
-**Section 1 (Overview)** — Feature name, summary, audience/actors, dependencies, assumptions, out-of-scope, at-a-glance table.
-- Use `.card` wrapper for grouping.
-- Actors table: Name/Role, Responsibility, System(s) they interact with.
-- Dependencies table: System, Purpose, Version/Location, Protocol.
-- At-a-glance table: Owner, Repos touched, Data store, Auth method, Environments.
-
-**Section 2 (Use Cases & Scope)** — Use-case flowchart, functional requirements table, non-functional requirements table.
-- Mermaid flowchart (actor → use-case → system boundary).
-- Functional requirements: ID (FR1), Requirement, Acceptance criteria.
-- Non-functional requirements: Attribute (Performance, Security, etc.), Measurable target.
-
-**Section 3 (C4)** — C4 Context and Container diagrams.
-- Mermaid C4Context showing system in the wider landscape.
-- Mermaid C4Container showing internal components.
-- Label all relationships with protocol (HTTPS/REST, SQL, async/webhook).
-
-**Section 4 (Domain & Data Model)** — Mermaid classDiagram, Mermaid erDiagram, migration impact note.
-- Domain model: classes, relationships, key attributes.
-- Entity-relationship diagram: tables, PK/FK, column types.
-- State explicitly: "none" (and why) or the specific schema changes.
-
-**Section 5 (API Design)** — Endpoint table, OpenAPI snippet in `<details>`, sequence diagram.
-- Endpoints table: Method, Route, Auth, Request, Response, Status codes.
-- OpenAPI 3.0 YAML inside `<details><summary>OpenAPI Spec</summary><pre>...</pre></details>`.
-- Mermaid sequenceDiagram: React → API → domain → DB → external systems (include token exchange).
-
-**Section 6 (UI/UX)** — User-flow flowchart, component hierarchy, lightweight ASCII wireframes.
-- Mermaid flowchart: screen-by-screen user journey.
-- Component hierarchy: Mermaid flowchart mapping React components to API endpoints.
-- Wireframes: ASCII inside bordered boxes (`.card` divs with `<pre>` for ASCII art).
-
-**Section 7 (Behaviour)** — State lifecycle diagram, activity/process diagram.
-- Mermaid stateDiagram-v2: entity states and transitions.
-- Mermaid flowchart: activity diagram for the main process, including error/retry branches.
-
-**Section 8 (Deployment)** — Deployment architecture diagram, Terraform outline, GitLab pipeline diagram.
-- Mermaid deployment flowchart: Docker containers, networks, cloud nodes, environments.
-- Terraform: file list + key resources inside `<details><summary>Terraform Modules</summary><pre>...</pre></details>`.
-- Mermaid pipeline flowchart: build → test → scan → docker → terraform → deploy, with gates.
-
-**Section 9 (Monitoring)** — Golden signals table, custom alerts table, incident flow diagram, dashboard widget list.
-- Golden signals table: Metric, Source, Target/SLO.
-- Alerts table: Alert name, NRQL query, Threshold, Severity, Notification channel.
-- Mermaid sequenceDiagram: New Relic alert → webhook → ServiceNow → on-call → resolution.
-- Dashboard widgets: a bulleted list.
-
-**Section 10 (Open Questions, Decisions & Risks)** — ADR (decision log) table and risks table only. Open Questions are **not** part of this HTML fragment: the template renders them from the structured `openQuestions` JSON field as an interactive table with a per-question answer box and a "Copy Q&A for Claude Code" button, so the user can fill in answers and paste them straight back into a refinement pass.
-- Decisions: Decision, Options considered, Choice + rationale, Date.
-- Risks: Risk, Likelihood, Impact, Mitigation.
+1. **Every section is populated** with concrete, concept-specific content. No empty sections, "TBD", or one-liners.
+2. **Tag confidence truthfully.** `source` (`user`/`code`/`inferred`/`assumed`) and `confidence` (`high`/`medium`/`low`) must reflect reality. Anything you'd be embarrassed to be wrong about silently belongs at `medium` or below (or as a fork).
+3. **No placeholder strings:** `TODO`, `TBD`, `[PLACEHOLDER]`, `FIXME`, `...`, `lorem ipsum`, `XXX`.
+4. **Every diagram is valid Mermaid** for its type and renders without error.
+5. **No vague filler** ("etc.", "as needed", "various", "could") as body text. Genuine ambiguity becomes an Open Question, a fork, or a low-confidence claim.
+6. **Ground it in this concept and this repo**, not generic examples.
 
 ---
 
-## JSON Output Format (For Generation)
+## Section 5 — the Understanding Checklist (`understanding` array)
 
-**You generate this structure and write it to `arch-<slug>.json`:**
+One **atomic claim** per entry, phrased so a human can verdict it ✓/≈/✗. Write 6–14 covering the concept, the code today, the change, and scope. Fields:
+- `id` (`U1`…), `area` (short: `Concept`/`Code`/`Change`/`Scope`), `statement` (one decisive plain-language assertion; one idea per row).
+- `source`, `confidence` (see contract).
+- `evidence` *(opt)* — code ref backing a `code` claim.
+- `impact` *(opt)* — what breaks if this is wrong. `impactLevel` *(opt: high/medium/low)* — used with confidence for triage. Add both to the claims that matter.
+- **`alternatives` *(opt: array of strings)* — makes the row a FORK.** Use it wherever you genuinely had to *choose* a reading of the user's intent: put the reading options here and phrase `statement` as the open question. The template renders radios so the user picks the intended one. Forks are auto-flagged high-stakes.
+- **`options` *(opt: array of strings)* — structured-correction choices** for a non-fork claim whose likely error is a specific value (a filename, an enum, a number). If the user marks it ≈/✗ they pick the right value instead of writing prose.
+
+Claims that are uncertain (low/medium confidence or `assumed`) *and* impactful, plus all forks, are flagged **high stakes** and gate approval. Order by importance and risk.
+
+---
+
+## Section 6 — Tensions (`tensions` array)
+
+Places where, reading the code, the user's stated or implied intent **conflicts** with what exists. This is how your code-derived knowledge flows back to the user instead of you silently bending their intent (a top source of non-compliance). Each: `id` (`T1`…), `youWant`, `butCode` (the conflicting reality), `evidence` *(opt)*, `options` (array of resolution paths the user picks from), `recommendation` *(opt)*. Raise one whenever intent is infeasible, costly, or self-contradictory given the code. Empty array is fine only if there genuinely are none.
+
+---
+
+## Section 4 — Acceptance Examples (`examples` array)
+
+Concrete input→outcome pairs that turn understanding into a **testable, binding contract**. This is the single biggest lever on compliance: adjectives drift, examples don't. Write enough to pin every load-bearing and every high-stakes claim. Each: `id` (`E1`…), `kind` (`example` = must happen, or `counter` = must NOT happen), `given`, `when`, `then`, `claims` *(opt: the `U#` ids this example pins)*. The user marks each ✓/✗; the ✓ ones become the acceptance criteria the implementation is graded against, so make `then` an observable outcome, not a feeling. Always include at least one counter-example fencing off a plausible wrong behaviour.
+
+---
+
+## AI Overview (`aiOverview`) and the recall box
+
+`aiOverview` is one condensed restatement of what the user wants and your approach — the single place the whole narrative is told, rendered top-of-page. The template also shows a **recall box the user fills in themselves** ("success in your own words"); you don't write it, but on the next pass reconcile your overview against it and treat divergence as the top priority.
+
+---
+
+## Free-form sections (clean HTML fragments — no `<section>`/`<h2>` wrapper)
+
+- **1 · The Concept, In My Own Words** — restate the idea and *why it matters*; the problem avoided.
+- **2 · What the Code Does Today** — current behaviour grounded in real files, with a Mermaid diagram of the current flow. Cite files.
+- **3 · The Change — Before → After** — a Before/After table and/or a target-flow Mermaid diagram. Make the delta unmistakable.
+- **7 · Scope Boundaries** — explicit In scope / Out of scope lists.
+- **9 · Risks & Sharp Edges** — table: Risk · Likelihood · Impact · Mitigation. Cross-reference risky claim/tension ids.
+- **10 · Implementation Sketch (Non-Binding)** — a *brief* ordered step list, clearly non-binding. Deliberately last and least detailed.
+
+Sections 4, 5, 6, and 8 are rendered from the `examples`, `understanding`, `tensions`, and `openQuestions` arrays — do not hand-write those.
+
+---
+
+## Open Questions (`openQuestions` array)
+
+Genuine decisions you need from the user. Each: `id` (`OQ1`…), `question`, `whyItMatters`, `proposedDefault`, `status` (`Open`/`Resolved-in-vN`). Rendered interactively; answers ride along in the copied review.
+
+---
+
+## JSON Output Format
+
+Write this to `arch-<slug>.json`:
 
 ```json
 {
-  "title": "Feature name (string)",
-  "summary": "One-sentence summary (string)",
-  "stack": "Stack badges separated by · (string)",
-  "status": "DRAFT|IN REVIEW|APPROVED — READY FOR IMPLEMENTATION (string)",
-  "statusClass": "draft|review|approved (string, lowercase)",
-  "version": "v1, v2, etc. (string)",
-  "lastUpdated": "2026-07-11 (date string)",
-  "authorModel": "Claude Haiku 4.5 (string)",
-  "aiOverview": "<p>...</p> (HTML fragment, the single condensed implementation summary — write once, don't repeat this narrative in every section)",
-  "revisionLog": [
-    {
-      "version": "v1",
-      "date": "2026-07-11",
-      "summary": "Initial draft...",
-      "drivenBy": "First generation"
-    }
+  "title": "Concept name",
+  "summary": "One-sentence summary",
+  "stack": "Context badges separated by ·",
+  "status": "DRAFT | IN REVIEW | APPROVED — READY FOR IMPLEMENTATION",
+  "statusClass": "draft | review | approved",
+  "version": "v1",
+  "lastUpdated": "YYYY-MM-DD",
+  "authorModel": "the model producing this pass",
+  "aiOverview": "<p>…</p>",
+  "revisionLog": [ { "version": "v1", "date": "YYYY-MM-DD", "summary": "…", "drivenBy": "First generation" } ],
+  "understanding": [
+    { "id": "U1", "area": "Concept", "statement": "…", "source": "user", "confidence": "high", "evidence": "path:line", "impact": "…", "impactLevel": "high" },
+    { "id": "U2", "area": "Change", "statement": "How should X behave?", "source": "inferred", "confidence": "low", "alternatives": ["reading A", "reading B"] },
+    { "id": "U3", "area": "Code", "statement": "Logic lives in charges.js", "source": "code", "confidence": "medium", "options": ["charges.js", "billing.js"] }
   ],
-  "openQuestions": [
-    {
-      "id": "OQ1",
-      "question": "Specific, answerable question (string)",
-      "whyItMatters": "Why this needs an answer (string)",
-      "proposedDefault": "What we'll assume if unanswered (string)",
-      "status": "Open|Resolved-in-vN (string)"
-    }
+  "tensions": [
+    { "id": "T1", "youWant": "…", "butCode": "…", "evidence": "path:line", "options": ["…", "…"], "recommendation": "…" }
   ],
-  "sections": {
-    "0": "<tr><td>v1</td><td>...</td></tr>... (revision log rows only)",
-    "1": "<div class='card'>...</div>... (full section 1 HTML)",
-    "2": "... (full section 2 HTML)",
-    ... (sections 0-10, each is complete HTML for that section)
-    "10": "... (Decisions/ADR + Risks tables only; Open Questions come from the openQuestions field above)"
-  }
+  "examples": [
+    { "id": "E1", "kind": "example", "given": "…", "when": "…", "then": "observable outcome", "claims": ["U1"] },
+    { "id": "E2", "kind": "counter", "given": "…", "when": "…", "then": "the thing that must NOT happen" }
+  ],
+  "openQuestions": [ { "id": "OQ1", "question": "…", "whyItMatters": "…", "proposedDefault": "…", "status": "Open" } ],
+  "sections": { "1": "<div class='card'>…</div>", "2": "…", "3": "…", "7": "…", "9": "…", "10": "…" }
 }
 ```
 
-**Important:** Section HTML must be clean fragments (no `<section>` wrapper, no `<h2>`, no outer `<html>`). The injection script wraps them in the template.
-
-**Revision log (`sections["0"]`):** Generate only `<tr>` rows (no `<table>` wrapper); the template provides the table.
+Section HTML must be clean fragments. There are no `sections` keys for 4/5/6/8 (structured) or 0 (revision log comes from `revisionLog`).
 
 ---
 
 ## After saving
 
-Print: Filename, Version, Status, revision log summary, Open Questions, and next step: "Reply with changes or say 'approved' to gate APPROVED — READY FOR IMPLEMENTATION."
+Print to chat:
+1. Filename, version, status.
+2. What changed (revision-log summary).
+3. The forks, tensions, and lowest-confidence claims you most want decided.
+4. Open Questions needing an answer.
+5. Next step: "Open the file. Write your success statement, verdict the high-stakes claims and forks in Section 5, resolve the tensions, sign off the acceptance examples, add anything I missed, then click **Copy review for the AI** and paste it back — or say 'approved' once the high-stakes items are settled."
 
 ---
 
-## 🔍 Self-retrospection (MANDATORY)
+## 🔍 Self-retrospection (MANDATORY, before saving)
 
-Before saving, verify:
-- Completeness: every section 0–10 filled; no TBD/placeholder strings.
-- `aiOverview` is written once and Sections 1–9 don't restate it as a narrative.
-- No vague phrases; ambiguities are precise entries in `openQuestions`, not a table inside `sections["10"]`.
-- Names consistent across sections; version matches revision log.
-- Mermaid syntax valid for each diagram type.
+- Every section filled; no placeholder strings.
+- `understanding` covers concept/code/change/scope; each claim is atomic and truthfully tagged; `code` claims cite evidence; genuine either/ors are forks, not confident picks.
+- Every load-bearing and high-stakes claim is pinned by at least one acceptance example; at least one counter-example exists.
+- Tensions raised wherever the code fights the intent.
+- Nothing you're actually unsure about is dressed up as `high` confidence.
+- `aiOverview` written once; Mermaid valid; names/versions consistent.
 
-Report findings and the Open Questions the user must resolve.
+Report findings and the forks, tensions, and questions you most want the user to decide.
 
 ---
 
 ## Implementation
 
-1. Check `arch-<slug>.html` exists → Mode A (new) or Mode B (refine).
-2. **Mode A:** research repo, generate section HTML plus `aiOverview` and `openQuestions`, assemble JSON per schema, run `node ~/.agents/skills/arch/arch-inject.js arch-<slug>.json arch-<slug>.html`, delete JSON.
-3. **Mode B:** extract metadata from HTML, regenerate affected sections (and `aiOverview`/`openQuestions` if the feature shape changed), increment version, assemble JSON, run injection script, delete JSON.
-4. Run self-retrospection per above, report findings and Open Questions.
-
+1. `arch-<slug>.html` exists? → Mode B, else Mode A.
+2. **Mode A:** research the code, produce `aiOverview` + `understanding` + `tensions` + `examples` + `openQuestions` + section fragments, assemble JSON, run `node ~/.agents/skills/arch/arch-inject.js arch-<slug>.json arch-<slug>.html`, delete JSON.
+3. **Mode B:** read existing HTML for metadata, apply the whole pasted review (reconcile overview vs. success statement, resolve forks, apply corrections, absorb new claims, resolve tensions, fix rejected examples, fold in answers), bump version + revision-log row, re-inject, delete JSON.
+4. Run retrospection; report per "After saving".

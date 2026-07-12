@@ -1,47 +1,33 @@
 #!/usr/bin/env node
 /**
- * arch-inject.js — Template injection tool for architecture documents
+ * arch-inject.js — Injects a "shared understanding" document into the HTML template.
  *
- * IMPORTANT: All diagrams MUST use Mermaid syntax for rendering in HTML.
- * The template includes Mermaid.js which will auto-render any <div class="mermaid"> blocks.
+ * The document exists to SYNC MENTAL MODELS between a human and the AI, and it is
+ * CO-AUTHORED: the AI states its understanding, and the human confirms, corrects,
+ * forks, resolves tensions, signs off examples, and adds claims the AI missed —
+ * all exported back as a structured review that drives the next pass. It is not an
+ * implementation spec; the implementation sketch is last and non-binding.
  *
- * Usage:
- *   node arch-inject.js <input-json> <output-html> [template-path]
+ * The template is filled from these inputs:
+ *   - understanding[]  → Section 5 checklist. Each claim gets ✓/≈/✗ verdicts, or,
+ *                        if it carries `alternatives`, radio FORK options. Optional
+ *                        `options` become structured-correction choices. Risky claims
+ *                        (uncertain × impactful, and all forks) are flagged priority.
+ *   - tensions[]       → Section 6. Conflicts the AI found between the user's intent
+ *                        and what the code allows, each with resolution options.
+ *   - examples[]       → Section 4. Given/When/Then acceptance examples (and
+ *                        counter-examples) the human signs off; approved ones are the
+ *                        binding behavioural contract.
+ *   - openQuestions[]  → Section 8 interactive table.
+ *   - revisionLog[]    → Section 0.
+ *   - sections{}       → free-form HTML for sections 1,2,3,7,9,10.
  *
- * Input JSON format:
- *   {
- *     "title": "How Does This Repo Work",
- *     "summary": "Reproducible machine setup as a Nix flake...",
- *     "stack": "Nix · Bash · Home Manager",
- *     "status": "DRAFT",
- *     "statusClass": "draft",
- *     "version": "v1",
- *     "lastUpdated": "2026-07-11",
- *     "authorModel": "Claude Haiku 4.5",
- *     "aiOverview": "<p>Single condensed summary of what will be implemented (HTML fragment).</p>",
- *     "revisionLog": [
- *       { "version": "v1", "date": "2026-07-11", "summary": "Initial draft...", "drivenBy": "First generation" }
- *     ],
- *     "openQuestions": [
- *       { "id": "OQ1", "question": "...", "whyItMatters": "...", "proposedDefault": "...", "status": "Open" }
- *     ],
- *     "sections": {
- *       "0": "<tr><td>...</td></tr>...",
- *       "1": "<div class='card'><h3>Title</h3><p>Content...</p></div>",
- *       "2": "<div class='card'>...<div class='mermaid'>graph TD\\n  A[Node] --> B[Node]</div></div>",
- *       ... (sections 0-10 as HTML fragments)
- *     }
- *   }
+ * IMPORTANT: All diagrams MUST use Mermaid syntax in <div class="mermaid">…</div>;
+ * the template auto-renders them. Escape newlines in JSON strings as \\n.
  *
- * DIAGRAM REQUIREMENTS:
- * - All diagrams MUST be wrapped in: <div class="mermaid">DIAGRAM_SYNTAX_HERE</div>
- * - Use Mermaid graph types: graph, flowchart, stateDiagram-v2, sequenceDiagram, classDiagram, erDiagram
- * - Escape newlines in JSON strings as: \\n (Mermaid will render line breaks correctly)
- * - Examples:
- *   - Flowchart: graph TD\\n  A[Start] --> B[End]
- *   - State diagram: stateDiagram-v2\\n  [*] --> State1\\n  State1 --> [*]
- *   - Sequence: sequenceDiagram\\n  User->>System: Request\\n  System-->>User: Response
- * - Do NOT use ASCII art or plain text; Mermaid renders programmatic diagrams only
+ * Usage: node arch-inject.js <input-json> <output-html> [template-path]
+ *
+ * See claude/commands/arch.md / copilot/skills/arch/SKILL.md for the full JSON schema.
  */
 
 const fs = require('fs');
@@ -55,7 +41,7 @@ function escapeHtml(text) {
     '"': '&quot;',
     "'": '&#039;'
   };
-  return text.replace(/[&<>"']/g, m => map[m]);
+  return String(text).replace(/[&<>"']/g, m => map[m]);
 }
 
 function loadTemplate(templatePath) {
@@ -71,9 +57,161 @@ function buildRevisionLogHtml(entries) {
     .join('\n');
 }
 
+// Source and confidence render as coloured badges. Unknown values fall back to the
+// most cautious option (assumed / low) so a mis-tagged claim draws MORE scrutiny.
+const SOURCE_BADGES = {
+  user: { cls: 'src-user', label: 'you said' },
+  code: { cls: 'src-code', label: 'in code' },
+  inferred: { cls: 'src-inferred', label: 'inferred' },
+  assumed: { cls: 'src-assumed', label: 'assumed' }
+};
+const CONFIDENCE_BADGES = {
+  high: { cls: 'conf-high', label: 'high' },
+  medium: { cls: 'conf-medium', label: 'medium' },
+  low: { cls: 'conf-low', label: 'low' }
+};
+
+function badgeHtml(table, value, fallbackKey) {
+  const badge = table[String(value || '').toLowerCase()] || table[fallbackKey];
+  return `<span class="badge ${badge.cls}">${badge.label}</span>`;
+}
+
+// A claim is "high priority" (must be verdicted before approval) when it is a fork
+// (an unresolved either/or) or when it is uncertain AND impactful — the quadrant
+// where silent agreement causes non-compliant code.
+function isHighPriority(entry) {
+  if (Array.isArray(entry.alternatives) && entry.alternatives.length) return true;
+  const conf = String(entry.confidence || '').toLowerCase();
+  const src = String(entry.source || '').toLowerCase();
+  const uncertain = conf === 'low' || conf === 'medium' || src === 'assumed';
+  const impactLevel = String(entry.impactLevel || (entry.impact ? 'medium' : 'low')).toLowerCase();
+  const impactful = impactLevel === 'high' || impactLevel === 'medium';
+  return uncertain && impactful;
+}
+
+function buildUnderstandingHtml(entries) {
+  return entries
+    .map(entry => {
+      const id = escapeHtml(entry.id);
+      const priority = isHighPriority(entry) ? 'high' : '';
+      const isFork = Array.isArray(entry.alternatives) && entry.alternatives.length > 0;
+
+      const evidence = entry.evidence
+        ? `<div class="u-evidence">📎 ${escapeHtml(entry.evidence)}</div>`
+        : '';
+      const impact = entry.impact
+        ? `<div class="u-impact">⚠ If wrong: ${escapeHtml(entry.impact)}</div>`
+        : '';
+      const flag = priority
+        ? `<div class="priority-flag">⚠ high stakes · confirm first</div>`
+        : '';
+      const forkHint = isFork
+        ? `<div class="fork-hint">I can read this more than one way — pick the intended one:</div>`
+        : '';
+
+      let verdictCell;
+      if (isFork) {
+        const opts = entry.alternatives
+          .map((alt, i) => `<label class="fork-opt"><input type="radio" name="fork-${id}" value="${i}"><span>${escapeHtml(alt)}</span></label>`)
+          .join('');
+        verdictCell =
+          `<td class="u-verdict u-fork">${opts}` +
+          `<label class="fork-opt fork-neither"><input type="radio" name="fork-${id}" value="neither"><span>neither — I'll explain</span></label>` +
+          `<textarea class="u-note" name="note-${id}" rows="2" placeholder="The right reading is…" hidden></textarea></td>`;
+      } else {
+        const optionButtons = (Array.isArray(entry.options) && entry.options.length)
+          ? `<div class="correction-options"><span class="correction-label">Right answer:</span>` +
+            entry.options.map(o => `<button type="button" class="correction-opt" data-value="${escapeHtml(o)}">${escapeHtml(o)}</button>`).join('') +
+            `</div>`
+          : '';
+        verdictCell =
+          `<td class="u-verdict"><div class="verdict-group">` +
+          `<button type="button" class="verdict-btn v-yes" data-verdict="yes" title="Correct">✓</button>` +
+          `<button type="button" class="verdict-btn v-partly" data-verdict="partly" title="Partly right">≈</button>` +
+          `<button type="button" class="verdict-btn v-no" data-verdict="no" title="Wrong">✗</button>` +
+          `</div><div class="u-correction" hidden>${optionButtons}` +
+          `<textarea class="u-note" name="note-${id}" rows="2" placeholder="What's off? Correct me…"></textarea></div></td>`;
+      }
+
+      return (
+        `<tr data-id="${id}" data-statement="${escapeHtml(entry.statement)}"${isFork ? ' data-fork="true"' : ''}${priority ? ' data-priority="high"' : ''}>` +
+        `<td>${id}</td>` +
+        `<td>${escapeHtml(entry.area || '')}</td>` +
+        `<td class="u-statement"><div>${escapeHtml(entry.statement)}</div>${evidence}${impact}${forkHint}${flag}</td>` +
+        `<td>${badgeHtml(SOURCE_BADGES, entry.source, 'assumed')}</td>` +
+        `<td>${badgeHtml(CONFIDENCE_BADGES, entry.confidence, 'low')}</td>` +
+        verdictCell +
+        `</tr>`
+      );
+    })
+    .join('\n');
+}
+
+function buildTensionsHtml(entries) {
+  if (!entries.length) {
+    return `<p class="u-hint">No tensions surfaced this pass — your intent and the code agree so far.</p>`;
+  }
+  return entries
+    .map(t => {
+      const id = escapeHtml(t.id);
+      const evidence = t.evidence ? `<div class="u-evidence">📎 ${escapeHtml(t.evidence)}</div>` : '';
+      const rec = t.recommendation
+        ? `<div class="tension-rec"><strong>My recommendation:</strong> ${escapeHtml(t.recommendation)}</div>`
+        : '';
+      const opts = (Array.isArray(t.options) ? t.options : [])
+        .map((o, i) => `<label class="tension-opt"><input type="radio" name="tension-${id}" value="${i}"><span>${escapeHtml(o)}</span></label>`)
+        .join('');
+      return (
+        `<div class="card tension-card" data-id="${id}" data-summary="${escapeHtml((t.youWant || '') + ' — vs — ' + (t.butCode || ''))}">` +
+        `<div class="tension-head"><span class="badge tension-badge">${id}</span> Tension I found</div>` +
+        `<div class="tension-cols">` +
+        `<div class="tension-col want"><h4>You want</h4><p>${escapeHtml(t.youWant || '')}</p></div>` +
+        `<div class="tension-col code"><h4>But the code…</h4><p>${escapeHtml(t.butCode || '')}</p>${evidence}</div>` +
+        `</div>${rec}` +
+        `<div class="tension-resolve"><span class="resolve-label">Your call:</span>${opts}` +
+        `<label class="tension-opt"><input type="radio" name="tension-${id}" value="other"><span>other →</span></label>` +
+        `<textarea class="t-note" name="tnote-${id}" rows="2" placeholder="How we should resolve it…" hidden></textarea></div>` +
+        `</div>`
+      );
+    })
+    .join('\n');
+}
+
+function buildExamplesHtml(entries) {
+  if (!entries.length) {
+    return `<p class="u-hint">No acceptance examples yet.</p>`;
+  }
+  return entries
+    .map(e => {
+      const id = escapeHtml(e.id);
+      const kind = String(e.kind || 'example').toLowerCase() === 'counter' ? 'counter' : 'example';
+      const kindLabel = kind === 'counter' ? 'must NOT happen' : 'must happen';
+      const refs = (Array.isArray(e.claims) && e.claims.length)
+        ? `<div class="ex-refs">Pins claims: ${e.claims.map(c => escapeHtml(c)).join(', ')}</div>`
+        : '';
+      const exText = `Given ${e.given || ''}; When ${e.when || ''}; Then ${e.then || ''}`;
+      return (
+        `<div class="card example-card ex-${kind}" data-id="${id}" data-example="${escapeHtml(exText)}">` +
+        `<div class="ex-head"><span class="badge kind-${kind}">${id} · ${kindLabel}</span>` +
+        `<div class="verdict-group ex-verdict">` +
+        `<button type="button" class="verdict-btn v-yes" data-verdict="yes" title="Right — this is the behaviour I want">✓</button>` +
+        `<button type="button" class="verdict-btn v-no" data-verdict="no" title="Wrong outcome">✗</button>` +
+        `</div></div>` +
+        `<div class="ex-gwt">` +
+        `<div><span class="gwt-k">Given</span> ${escapeHtml(e.given || '')}</div>` +
+        `<div><span class="gwt-k">When</span> ${escapeHtml(e.when || '')}</div>` +
+        `<div><span class="gwt-k">Then</span> ${escapeHtml(e.then || '')}</div>` +
+        `</div>${refs}` +
+        `<textarea class="ex-note" name="exnote-${id}" rows="2" placeholder="What should the outcome be instead?" hidden></textarea>` +
+        `</div>`
+      );
+    })
+    .join('\n');
+}
+
 function buildOpenQuestionsHtml(entries) {
   return entries
-    .map(entry => `<tr><td>${escapeHtml(entry.id)}</td><td>${escapeHtml(entry.question)}</td><td>${escapeHtml(entry.whyItMatters)}</td><td>${escapeHtml(entry.proposedDefault)}</td><td>${escapeHtml(entry.status)}</td><td><textarea class="oq-answer" rows="2" placeholder="Type your answer…"></textarea></td></tr>`)
+    .map(entry => `<tr data-id="${escapeHtml(entry.id)}"><td>${escapeHtml(entry.id)}</td><td>${escapeHtml(entry.question)}</td><td>${escapeHtml(entry.whyItMatters)}</td><td>${escapeHtml(entry.proposedDefault)}</td><td>${escapeHtml(entry.status)}</td><td><textarea class="oq-answer" name="answer-${escapeHtml(entry.id)}" rows="2" placeholder="Type your answer…"></textarea></td></tr>`)
     .join('\n');
 }
 
@@ -86,33 +224,33 @@ function injectContent(template, config) {
     html = html.replace(pattern, () => value);
   };
 
-  // Replace feature-level metadata
+  // Feature-level metadata (escaped; some land inside HTML attributes).
   put(/{{FEATURE_TITLE}}/g, escapeHtml(config.title));
   put(/{{FEATURE_SUMMARY}}/g, escapeHtml(config.summary));
   put(/{{STACK_BADGES}}/g, escapeHtml(config.stack));
 
-  // Replace document control metadata
+  // Document-control metadata (escaped).
   put(/{{STATUS}}/g, escapeHtml(config.status));
   put(/{{STATUS_CLASS}}/g, escapeHtml(config.statusClass));
   put(/{{VERSION}}/g, escapeHtml(config.version));
   put(/{{LAST_UPDATED}}/g, escapeHtml(config.lastUpdated));
   put(/{{AUTHOR_MODEL}}/g, escapeHtml(config.authorModel));
 
-  // Replace AI overview (raw HTML, assumed safe from input, same as sections)
+  // AI overview (raw HTML fragment, same trust level as sections).
   put(/{{AI_OVERVIEW_CONTENT}}/g, config.aiOverview || '');
 
-  // Replace revision log (raw HTML, already escaped in input)
-  put(/{{REVISION_LOG_ROWS}}/g, buildRevisionLogHtml(config.revisionLog));
-
-  // Replace open questions (raw HTML; entry fields are escaped, textarea is static markup)
+  // Structured, co-authored surfaces (fields escaped inside the builders).
+  put(/{{REVISION_LOG_ROWS}}/g, buildRevisionLogHtml(config.revisionLog || []));
+  put(/{{UNDERSTANDING_ROWS}}/g, buildUnderstandingHtml(config.understanding || []));
+  put(/{{TENSIONS_CONTENT}}/g, buildTensionsHtml(config.tensions || []));
+  put(/{{EXAMPLES_CONTENT}}/g, buildExamplesHtml(config.examples || []));
   put(/{{OPEN_QUESTIONS_ROWS}}/g, buildOpenQuestionsHtml(config.openQuestions || []));
 
-  // Replace section content (raw HTML, assumed safe from input)
-  // IMPORTANT: Section content MUST include Mermaid diagrams wrapped in <div class="mermaid">
-  // The template loads Mermaid.js which will automatically render any Mermaid syntax found
-  for (let i = 0; i <= 10; i++) {
-    const sectionContent = config.sections[`${i}`] || '';
-    put(new RegExp(`{{SECTION_${i}_CONTENT}}`, 'g'), sectionContent);
+  // Free-form section content (raw HTML). Sections 4/5/6/8 are the structured
+  // surfaces above and have no {{SECTION_N_CONTENT}} slot, so stray keys are ignored.
+  const sections = config.sections || {};
+  for (let i = 1; i <= 10; i++) {
+    put(new RegExp(`{{SECTION_${i}_CONTENT}}`, 'g'), sections[`${i}`] || '');
   }
 
   return html;
@@ -125,17 +263,14 @@ function main() {
     console.error('Usage: node arch-inject.js <input-json> <output-html> [template-path]');
     console.error('');
     console.error('Arguments:');
-    console.error('  <input-json>    Path to JSON file with section content (HTML fragments with Mermaid diagrams)');
-    console.error('  <output-html>   Path to write final HTML (will include rendered Mermaid diagrams)');
-    console.error('  [template-path] Path to HTML template (default: arch-template.html next to this script)');
+    console.error('  <input-json>    JSON with understanding claims, tensions, acceptance examples,');
+    console.error('                  open questions, and section HTML fragments');
+    console.error('  <output-html>   Path to write the final shared-understanding document');
+    console.error('  [template-path] HTML template (default: arch-template.html next to this script)');
     console.error('');
-    console.error('IMPORTANT: All diagrams in JSON sections MUST use Mermaid syntax:');
-    console.error('  - Wrap diagrams: <div class="mermaid">DIAGRAM_SYNTAX_HERE</div>');
-    console.error('  - Use Mermaid types: graph, flowchart, stateDiagram-v2, sequenceDiagram, classDiagram');
-    console.error('  - Escape newlines: Use \\\\n (double backslash-n) in JSON strings');
-    console.error('  - Example: <div class="mermaid">graph TD\\\\n  A[Start] --> B[End]</div>');
-    console.error('');
-    console.error('The HTML template includes Mermaid.js which will auto-render these diagrams.');
+    console.error('The doc is co-authored: the human confirms/corrects/forks claims, resolves tensions,');
+    console.error('signs off examples, and adds missed claims, then exports a review for the next pass.');
+    console.error('Wrap diagrams in <div class="mermaid">…</div> (newlines as \\\\n); the template renders them.');
     process.exit(1);
   }
 
@@ -144,19 +279,12 @@ function main() {
   const templatePath = args[2] || path.join(__dirname, 'arch-template.html');
 
   try {
-    // Load and parse input JSON
     if (!fs.existsSync(inputJsonPath)) {
       throw new Error(`Input JSON not found: ${inputJsonPath}`);
     }
     const config = JSON.parse(fs.readFileSync(inputJsonPath, 'utf-8'));
-
-    // Load template
     const template = loadTemplate(templatePath);
-
-    // Inject content
     const html = injectContent(template, config);
-
-    // Write output
     fs.writeFileSync(outputHtmlPath, html, 'utf-8');
     console.log(`✓ Generated: ${outputHtmlPath}`);
   } catch (error) {
@@ -169,4 +297,14 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { escapeHtml, buildRevisionLogHtml, buildOpenQuestionsHtml, injectContent, loadTemplate };
+module.exports = {
+  escapeHtml,
+  isHighPriority,
+  buildRevisionLogHtml,
+  buildUnderstandingHtml,
+  buildTensionsHtml,
+  buildExamplesHtml,
+  buildOpenQuestionsHtml,
+  injectContent,
+  loadTemplate
+};

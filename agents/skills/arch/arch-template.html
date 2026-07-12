@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Architecture — {{FEATURE_TITLE}}</title>
+    <title>Shared Understanding — {{FEATURE_TITLE}}</title>
     <style>
       * {
         margin: 0;
@@ -21,6 +21,8 @@
         --status-draft: #64748b;
         --status-review: #f59e0b;
         --status-approved: #16a34a;
+        --wrong: #e11d48;
+        --warn: #b45309;
       }
 
       body {
@@ -161,6 +163,10 @@
         color: var(--accent);
       }
 
+      .card h4:first-child {
+        margin-top: 0;
+      }
+
       .card p {
         margin-bottom: 1rem;
         color: var(--text);
@@ -212,6 +218,394 @@
       .table-wrap {
         overflow-x: auto;
         margin-bottom: 1rem;
+      }
+
+      /* Interactive tables hold sentences, not identifiers: let them wrap. */
+      #u-table td,
+      #oq-table td {
+        white-space: normal;
+        vertical-align: top;
+      }
+
+      #u-table .u-statement {
+        min-width: 320px;
+      }
+
+      #u-table .u-verdict {
+        min-width: 210px;
+      }
+
+      #oq-table td:nth-child(2) {
+        min-width: 260px;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 0.15rem 0.6rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .badge.src-user {
+        background: rgba(37, 99, 235, 0.12);
+        color: var(--accent);
+      }
+      .badge.src-code {
+        background: rgba(22, 163, 74, 0.12);
+        color: var(--status-approved);
+      }
+      .badge.src-inferred {
+        background: rgba(245, 158, 11, 0.15);
+        color: var(--warn);
+      }
+      .badge.src-assumed {
+        background: rgba(225, 29, 72, 0.12);
+        color: #be123c;
+      }
+      .badge.conf-high {
+        background: rgba(22, 163, 74, 0.12);
+        color: var(--status-approved);
+      }
+      .badge.conf-medium {
+        background: rgba(245, 158, 11, 0.15);
+        color: var(--warn);
+      }
+      .badge.conf-low {
+        background: rgba(225, 29, 72, 0.12);
+        color: #be123c;
+      }
+      .badge.kind-example {
+        background: rgba(22, 163, 74, 0.12);
+        color: var(--status-approved);
+      }
+      .badge.kind-counter {
+        background: rgba(225, 29, 72, 0.12);
+        color: #be123c;
+      }
+      .badge.tension-badge {
+        background: rgba(245, 158, 11, 0.15);
+        color: var(--warn);
+      }
+
+      .u-evidence {
+        margin-top: 0.35rem;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+      }
+
+      .u-impact {
+        margin-top: 0.25rem;
+        font-size: 0.8rem;
+        color: var(--warn);
+      }
+
+      .priority-flag {
+        margin-top: 0.4rem;
+        display: inline-block;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #be123c;
+        background: rgba(225, 29, 72, 0.09);
+        border: 1px solid rgba(225, 29, 72, 0.25);
+        border-radius: 999px;
+        padding: 0.1rem 0.55rem;
+      }
+
+      .fork-hint {
+        margin-top: 0.4rem;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--accent);
+      }
+
+      .u-hint {
+        color: var(--text-muted);
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+      }
+
+      /* Verdict buttons (claims + examples) */
+      .verdict-group {
+        display: flex;
+        gap: 0.35rem;
+        margin-bottom: 0.4rem;
+      }
+
+      .verdict-btn {
+        width: 2rem;
+        height: 2rem;
+        border: 1px solid var(--border);
+        background: var(--card-bg);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.95rem;
+        line-height: 1;
+        color: var(--text-muted);
+        transition: all 0.15s;
+      }
+
+      .verdict-btn:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .verdict-btn.v-yes.selected {
+        background: var(--status-approved);
+        border-color: var(--status-approved);
+        color: white;
+      }
+      .verdict-btn.v-partly.selected {
+        background: var(--status-review);
+        border-color: var(--status-review);
+        color: white;
+      }
+      .verdict-btn.v-no.selected {
+        background: var(--wrong);
+        border-color: var(--wrong);
+        color: white;
+      }
+
+      /* Row state colouring (agreed / flagged) for claims */
+      #u-table tbody tr[data-state="agreed"] {
+        background: rgba(22, 163, 74, 0.07);
+      }
+      #u-table tbody tr[data-state="flagged"] {
+        background: rgba(225, 29, 72, 0.07);
+      }
+      #u-table tbody tr[data-priority="high"] td:first-child {
+        box-shadow: inset 3px 0 0 #be123c;
+      }
+
+      /* Fork radio options */
+      .fork-opt,
+      .tension-opt {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.45rem;
+        font-size: 0.88rem;
+        padding: 0.3rem 0.4rem;
+        border-radius: 6px;
+        cursor: pointer;
+        margin-bottom: 0.2rem;
+      }
+      .fork-opt:hover,
+      .tension-opt:hover {
+        background: var(--bg);
+      }
+      .fork-opt input,
+      .tension-opt input {
+        margin-top: 0.28rem;
+      }
+      .fork-neither span {
+        color: var(--text-muted);
+      }
+
+      /* Structured correction options */
+      .u-correction {
+        margin-top: 0.25rem;
+      }
+      .correction-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        align-items: center;
+        margin-bottom: 0.5rem;
+      }
+      .correction-label {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        margin-right: 0.15rem;
+      }
+      .correction-opt {
+        border: 1px solid var(--border);
+        background: var(--card-bg);
+        border-radius: 6px;
+        padding: 0.25rem 0.6rem;
+        font-size: 0.82rem;
+        cursor: pointer;
+        color: var(--text);
+        transition: all 0.15s;
+      }
+      .correction-opt:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .correction-opt.selected {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: white;
+      }
+
+      /* Add-a-claim */
+      .add-claim-row {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 0.5rem;
+      }
+      .ghost-btn {
+        background: var(--card-bg);
+        border: 1px dashed var(--accent);
+        color: var(--accent);
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .ghost-btn:hover {
+        background: rgba(37, 99, 235, 0.06);
+      }
+      #u-table tbody tr.added-row {
+        background: rgba(37, 99, 235, 0.05);
+      }
+      textarea.added-text {
+        width: 100%;
+        min-width: 260px;
+        min-height: 2.5rem;
+        padding: 0.5rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 0.9rem;
+        color: var(--text);
+        resize: vertical;
+      }
+      .remove-added {
+        background: none;
+        border: none;
+        color: var(--wrong);
+        cursor: pointer;
+        font-size: 0.8rem;
+      }
+      .remove-added:hover {
+        text-decoration: underline;
+      }
+
+      /* Recall / success statement */
+      .recall-card {
+        border-left: 4px solid var(--status-review);
+        background: rgba(245, 158, 11, 0.05);
+      }
+      .recall-card h3 {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      textarea#recall-box {
+        width: 100%;
+        min-height: 4rem;
+        padding: 0.6rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 0.95rem;
+        color: var(--text);
+        resize: vertical;
+      }
+
+      /* Tensions */
+      .tension-card {
+        border-left: 4px solid var(--status-review);
+      }
+      .tension-head {
+        font-weight: 600;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .tension-cols {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 1rem;
+      }
+      .tension-col {
+        padding: 0.85rem 1rem;
+        border-radius: 8px;
+        background: var(--bg);
+      }
+      .tension-col.want {
+        border-top: 3px solid var(--accent);
+      }
+      .tension-col.code {
+        border-top: 3px solid var(--wrong);
+      }
+      .tension-col h4 {
+        margin: 0 0 0.4rem 0;
+      }
+      .tension-col p {
+        margin: 0;
+        font-size: 0.92rem;
+      }
+      .tension-rec {
+        font-size: 0.9rem;
+        background: rgba(37, 99, 235, 0.05);
+        border-radius: 8px;
+        padding: 0.6rem 0.85rem;
+        margin-bottom: 1rem;
+      }
+      .tension-resolve {
+        border-top: 1px solid var(--border);
+        padding-top: 0.85rem;
+      }
+      .resolve-label {
+        display: block;
+        font-weight: 600;
+        font-size: 0.88rem;
+        margin-bottom: 0.5rem;
+      }
+      .tension-card[data-choice] {
+        border-left-color: var(--status-approved);
+      }
+
+      /* Acceptance examples */
+      .example-card {
+        border-left: 4px solid var(--status-approved);
+      }
+      .example-card.ex-counter {
+        border-left-color: var(--wrong);
+      }
+      .ex-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 0.85rem;
+      }
+      .ex-verdict {
+        margin-bottom: 0;
+      }
+      .ex-gwt > div {
+        padding: 0.35rem 0;
+        font-size: 0.93rem;
+        border-bottom: 1px dashed var(--border);
+      }
+      .ex-gwt > div:last-child {
+        border-bottom: none;
+      }
+      .gwt-k {
+        display: inline-block;
+        width: 3.6rem;
+        font-weight: 700;
+        color: var(--text-muted);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      .ex-refs {
+        margin-top: 0.5rem;
+        font-size: 0.78rem;
+        color: var(--text-muted);
+      }
+      .example-card[data-verdict="yes"] {
+        background: rgba(22, 163, 74, 0.06);
+      }
+      .example-card[data-verdict="no"] {
+        background: rgba(225, 29, 72, 0.06);
       }
 
       .mermaid-card {
@@ -367,12 +761,6 @@
         background: rgba(37, 99, 235, 0.04);
       }
 
-      .oq-toolbar {
-        display: flex;
-        justify-content: flex-end;
-        margin-bottom: 1rem;
-      }
-
       .copy-qa-btn {
         background: var(--accent);
         color: white;
@@ -384,18 +772,19 @@
         cursor: pointer;
         transition: all 0.2s;
       }
-
       .copy-qa-btn:hover {
         opacity: 0.9;
       }
-
       .copy-qa-btn.copied {
         background: var(--status-approved);
       }
 
-      textarea.oq-answer {
+      textarea.oq-answer,
+      textarea.u-note,
+      textarea.t-note,
+      textarea.ex-note {
         width: 100%;
-        min-width: 220px;
+        min-width: 200px;
         min-height: 3rem;
         padding: 0.5rem;
         border: 1px solid var(--border);
@@ -404,6 +793,63 @@
         font-size: 0.9rem;
         color: var(--text);
         resize: vertical;
+      }
+      textarea.u-note,
+      textarea.t-note,
+      textarea.ex-note {
+        min-width: 180px;
+        margin-top: 0.35rem;
+      }
+
+      #sync-widget {
+        position: fixed;
+        right: 1.25rem;
+        bottom: 1.25rem;
+        z-index: 500;
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+        padding: 0.9rem 1rem;
+        width: 250px;
+        font-size: 0.85rem;
+      }
+      #sync-widget .sync-title {
+        font-weight: 600;
+        margin-bottom: 0.35rem;
+      }
+      #sync-widget .sync-counts {
+        color: var(--text-muted);
+        margin-bottom: 0.5rem;
+      }
+      #sync-widget .sync-bar {
+        height: 6px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        overflow: hidden;
+        margin-bottom: 0.5rem;
+      }
+      #sync-bar-fill {
+        height: 100%;
+        width: 0;
+        background: var(--status-approved);
+        transition: width 0.2s;
+      }
+      .sync-gate {
+        font-size: 0.8rem;
+        font-weight: 600;
+        margin-bottom: 0.6rem;
+        color: var(--text-muted);
+      }
+      .sync-gate.warn {
+        color: #be123c;
+      }
+      .sync-gate.ok {
+        color: var(--status-approved);
+      }
+      #copy-review-btn {
+        width: 100%;
       }
 
       section,
@@ -422,57 +868,76 @@
           padding: 1rem;
           margin-bottom: 1rem;
         }
-
         nav#toc .brand {
           display: inline-block;
           margin-right: 2rem;
         }
-
         nav#toc a {
           display: inline-block;
           margin: 0 0.5rem;
           padding: 0.4rem 0.6rem;
           font-size: 0.85rem;
         }
-
         main {
           margin-left: 0;
           padding: 2rem 1rem;
         }
-
         header h1 {
           font-size: 1.5rem;
+        }
+        .tension-cols {
+          grid-template-columns: 1fr;
+        }
+        #sync-widget {
+          right: 0.75rem;
+          bottom: 0.75rem;
+          width: 210px;
+          padding: 0.7rem 0.8rem;
         }
       }
     </style>
   </head>
   <body>
     <nav id="toc">
-      <span class="brand">🏛️ Architecture</span>
-      <a href="#s-overview">★ AI Overview</a>
+      <span class="brand">🧠 Understanding</span>
+      <a href="#s-overview">★ At a Glance</a>
       <a href="#s0">0 · Document Control</a>
-      <a href="#s1">1 · Overview</a>
-      <a href="#s2">2 · Use Cases &amp; Scope</a>
-      <a href="#s3">3 · C4 Context &amp; Containers</a>
-      <a href="#s4">4 · Domain &amp; Data Model</a>
-      <a href="#s5">5 · API Design</a>
-      <a href="#s6">6 · UI/UX</a>
-      <a href="#s7">7 · Behaviour &amp; Process</a>
-      <a href="#s8">8 · Deployment</a>
-      <a href="#s9">9 · Monitoring &amp; Alerts</a>
-      <a href="#s10">10 · Open Questions &amp; Risks</a>
+      <a href="#s1">1 · The Concept</a>
+      <a href="#s2">2 · The Code Today</a>
+      <a href="#s3">3 · The Change</a>
+      <a href="#s4">4 · Acceptance Examples</a>
+      <a href="#s5">5 · Understanding Checklist</a>
+      <a href="#s6">6 · Tensions</a>
+      <a href="#s7">7 · Scope</a>
+      <a href="#s8">8 · Open Questions</a>
+      <a href="#s9">9 · Risks</a>
+      <a href="#s10">10 · Implementation Sketch</a>
     </nav>
 
     <main>
       <header>
-        <h1>🏛️ Architecture — {{FEATURE_TITLE}}</h1>
+        <h1>🧠 Shared Understanding — {{FEATURE_TITLE}}</h1>
         <p class="subtitle">{{FEATURE_SUMMARY}} · {{STACK_BADGES}}</p>
       </header>
 
       <section id="s-overview">
-        <h2>🤖 AI Overview — What Will Be Implemented</h2>
+        <h2>🤖 At a Glance — Do We Agree on the Goal?</h2>
         <div class="card ai-overview-card">
+          <h3>My understanding of what you want</h3>
           {{AI_OVERVIEW_CONTENT}}
+        </div>
+        <div class="card recall-card">
+          <h3>✍️ Your turn — success in your own words</h3>
+          <p class="u-hint">
+            Before trusting my summary, write what a correct result looks like
+            to you, in a sentence or two. If your words and mine diverge, that
+            gap is the most important thing on this page. Your text is included
+            in the copied review so I can reconcile the two.
+          </p>
+          <textarea
+            id="recall-box"
+            placeholder="In my words, this is done when…"
+          ></textarea>
         </div>
       </section>
 
@@ -505,65 +970,97 @@
         </div>
 
         <div class="approval-gate">
-          <strong>Approval Gate:</strong> This document must reach APPROVED
-          status before implementation begins.
+          <strong>Approval Gate:</strong> Implementation begins only after every
+          high-stakes claim in Section 5 is verdicted, every tension is resolved,
+          the acceptance examples you approve are agreed as binding, and you flip
+          this document to APPROVED. Matching mental models is the deliverable
+          here; code comes later.
         </div>
       </section>
 
       <section id="s1">
-        <h2>1 · Overview — Feature, Audience &amp; Dependencies</h2>
+        <h2>1 · The Concept, In My Own Words</h2>
         {{SECTION_1_CONTENT}}
       </section>
 
       <section id="s2">
-        <h2>2 · Use Cases &amp; Scope</h2>
+        <h2>2 · What the Code Does Today</h2>
         {{SECTION_2_CONTENT}}
       </section>
 
       <section id="s3">
-        <h2>3 · C4 — Context &amp; Containers</h2>
+        <h2>3 · The Change — Before → After</h2>
         {{SECTION_3_CONTENT}}
       </section>
 
       <section id="s4">
-        <h2>4 · Domain &amp; Data Model</h2>
-        {{SECTION_4_CONTENT}}
+        <h2>4 · Acceptance Examples — Sign Off the Behaviour</h2>
+        <p class="u-hint">
+          Each example is a concrete input → outcome I believe you want (or, for a
+          counter-example, one that must NOT happen). Mark ✓ if that's the behaviour
+          you expect, ✗ if the outcome is wrong. The ones you ✓ become the binding
+          acceptance criteria the implementation is graded against — this is where
+          understanding turns into something testable.
+        </p>
+        {{EXAMPLES_CONTENT}}
       </section>
 
       <section id="s5">
-        <h2>5 · API Design (.NET)</h2>
-        {{SECTION_5_CONTENT}}
+        <h2>5 · Understanding Checklist — Confirm, Correct, or Fork Each Claim</h2>
+        <div class="card">
+          <p class="u-hint">
+            Each row is one claim I hold about your concept or your code. Mark it
+            ✓ correct, ≈ partly right, or ✗ wrong (and pick the right answer or
+            leave a note). Some rows are <strong>forks</strong> — I read them more
+            than one way, so choose the intended reading. Rows flagged
+            <strong>high stakes</strong> matter most: confirm those first. If I
+            missed something entirely, add it with the button below the table.
+          </p>
+          <div class="table-wrap">
+            <table id="u-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Area</th>
+                  <th>What I Understand</th>
+                  <th>Source</th>
+                  <th>Confidence</th>
+                  <th>Your Verdict</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{UNDERSTANDING_ROWS}}
+              </tbody>
+            </table>
+          </div>
+          <div class="add-claim-row">
+            <button type="button" id="add-claim-btn" class="ghost-btn">
+              ＋ Add a claim I missed
+            </button>
+          </div>
+        </div>
       </section>
 
       <section id="s6">
-        <h2>6 · UI/UX (React)</h2>
-        {{SECTION_6_CONTENT}}
+        <h2>6 · Tensions — What You Want vs. What the Code Allows</h2>
+        <p class="u-hint">
+          Reading the code, I found places where your intent and the current
+          reality pull against each other. Rather than silently pick for you, I'm
+          surfacing them: choose how each should resolve. An unresolved tension is
+          a likely source of a surprise later.
+        </p>
+        {{TENSIONS_CONTENT}}
       </section>
 
       <section id="s7">
-        <h2>7 · Behaviour — State &amp; Process</h2>
+        <h2>7 · Scope Boundaries</h2>
         {{SECTION_7_CONTENT}}
       </section>
 
       <section id="s8">
-        <h2>8 · Deployment — Docker, Terraform, GitLab CI/CD</h2>
-        {{SECTION_8_CONTENT}}
-      </section>
-
-      <section id="s9">
-        <h2>9 · Monitoring &amp; Custom Alerts</h2>
-        {{SECTION_9_CONTENT}}
-      </section>
-
-      <section id="s10">
-        <h2>10 · Open Questions, Decisions &amp; Risks</h2>
+        <h2>8 · Open Questions</h2>
         <div class="card">
-          <h3>Open Questions</h3>
-          <div class="oq-toolbar">
-            <button type="button" class="copy-qa-btn" data-target="oq-table">
-              📋 Copy Q&amp;A for Claude Code
-            </button>
-          </div>
+          <p class="u-hint">Answers typed here are included in the copied review.</p>
           <div class="table-wrap">
             <table id="oq-table">
               <thead>
@@ -582,9 +1079,37 @@
             </table>
           </div>
         </div>
+      </section>
+
+      <section id="s9">
+        <h2>9 · Risks &amp; Sharp Edges</h2>
+        {{SECTION_9_CONTENT}}
+      </section>
+
+      <section id="s10">
+        <h2>10 · Implementation Sketch (Non-Binding)</h2>
         {{SECTION_10_CONTENT}}
       </section>
     </main>
+
+    <div
+      id="sync-widget"
+      data-doc="{{FEATURE_TITLE}}"
+      data-version="{{VERSION}}"
+      data-status="{{STATUS}}"
+    >
+      <div class="sync-title">Understanding sync</div>
+      <div class="sync-counts">
+        <span id="sync-confirmed">0</span> agreed ·
+        <span id="sync-flagged">0</span> to fix ·
+        <span id="sync-pending">0</span> pending
+      </div>
+      <div class="sync-bar"><div id="sync-bar-fill"></div></div>
+      <div id="sync-gate" class="sync-gate">Review the claims above</div>
+      <button type="button" id="copy-review-btn" class="copy-qa-btn">
+        📋 Copy review for the AI
+      </button>
+    </div>
 
     <script type="module">
       import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
@@ -707,30 +1232,520 @@
     </script>
 
     <script>
-      document.querySelectorAll(".copy-qa-btn").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const table = document.getElementById(btn.dataset.target);
-          if (!table) return;
-          const lines = [];
-          table.querySelectorAll("tbody tr").forEach((row) => {
-            const id = row.children[0]?.textContent.trim() || "";
-            const question = row.children[1]?.textContent.trim() || "";
-            const answer =
-              row.querySelector("textarea")?.value.trim() ||
-              "(no answer provided)";
-            lines.push(`${id}: ${question}\nAnswer: ${answer}`);
+      // Co-authoring engine: verdicts, forks, structured corrections, added
+      // claims, tension resolutions, example sign-off, recall, live sync, and
+      // the review export. All state persists per browser keyed by doc+version.
+      (function () {
+        const widget = document.getElementById("sync-widget");
+        if (!widget) return;
+
+        const docName = widget.dataset.doc || "";
+        const docVersion = widget.dataset.version || "";
+        const docStatus = widget.dataset.status || "";
+        const storeKey = "arch-review:" + docName + ":" + docVersion;
+
+        const state = load();
+        state.recall = state.recall || "";
+        state.claims = state.claims || {};
+        state.added = Array.isArray(state.added) ? state.added : [];
+        state.tensions = state.tensions || {};
+        state.examples = state.examples || {};
+        state.answers = state.answers || {};
+
+        function load() {
+          try {
+            return JSON.parse(localStorage.getItem(storeKey)) || {};
+          } catch (e) {
+            return {};
+          }
+        }
+        function save() {
+          try {
+            localStorage.setItem(storeKey, JSON.stringify(state));
+          } catch (e) {
+            /* private mode: review still works, just not persisted */
+          }
+        }
+        const txt = (el) => (el ? el.value.trim() : "");
+        const setText = (sel, val) => {
+          const el = document.querySelector(sel);
+          if (el) el.textContent = val;
+        };
+
+        // ---------- Recall / success statement ----------
+        const recall = document.getElementById("recall-box");
+        if (recall) {
+          recall.value = state.recall;
+          recall.addEventListener("input", () => {
+            state.recall = recall.value;
+            save();
           });
-          navigator.clipboard.writeText(lines.join("\n\n")).then(() => {
-            const original = btn.textContent;
-            btn.textContent = "✓ Copied";
-            btn.classList.add("copied");
-            setTimeout(() => {
-              btn.textContent = original;
-              btn.classList.remove("copied");
-            }, 1500);
+        }
+
+        // ---------- Understanding rows ----------
+        const uTableBody = document.querySelector("#u-table tbody");
+        const claimRows = () =>
+          Array.from(document.querySelectorAll("#u-table tbody tr[data-id]"));
+
+        function rowState(row) {
+          if (row.dataset.fork === "true") {
+            const c = row.dataset.forkChoice;
+            if (c && c !== "neither") return "agreed";
+            if (c === "neither") return "flagged";
+            return "pending";
+          }
+          const v = row.dataset.verdict;
+          if (v === "yes") return "agreed";
+          if (v === "no" || v === "partly") return "flagged";
+          return "pending";
+        }
+        function paintRow(row) {
+          row.dataset.state = rowState(row);
+        }
+
+        function applyVerdict(row, verdict) {
+          if (verdict) row.dataset.verdict = verdict;
+          else row.removeAttribute("data-verdict");
+          row.querySelectorAll(".verdict-btn").forEach((b) => {
+            b.classList.toggle("selected", b.dataset.verdict === verdict);
+          });
+          const correction = row.querySelector(".u-correction");
+          if (correction)
+            correction.hidden = !(verdict === "no" || verdict === "partly");
+          paintRow(row);
+        }
+
+        function wireClaim(row) {
+          const id = row.dataset.id;
+          const note = row.querySelector(".u-note");
+
+          if (row.dataset.fork === "true") {
+            row.querySelectorAll('input[type="radio"]').forEach((radio) => {
+              radio.addEventListener("change", () => {
+                row.dataset.forkChoice = radio.value;
+                if (note) note.hidden = radio.value !== "neither";
+                state.claims[id] = { fork: radio.value, note: txt(note) };
+                paintRow(row);
+                save();
+                refresh();
+              });
+            });
+            if (note)
+              note.addEventListener("input", () => {
+                state.claims[id] = {
+                  fork: row.dataset.forkChoice || "",
+                  note: note.value,
+                };
+                save();
+              });
+            const s = state.claims[id];
+            if (s && s.fork) {
+              row.querySelectorAll('input[type="radio"]').forEach((r) => {
+                if (r.value === s.fork) r.checked = true;
+              });
+              row.dataset.forkChoice = s.fork;
+              if (note) {
+                note.hidden = s.fork !== "neither";
+                note.value = s.note || "";
+              }
+            }
+            paintRow(row);
+            return;
+          }
+
+          row.querySelectorAll(".verdict-btn").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const next =
+                row.dataset.verdict === btn.dataset.verdict
+                  ? ""
+                  : btn.dataset.verdict;
+              applyVerdict(row, next);
+              const cur = state.claims[id] || {};
+              state.claims[id] = {
+                verdict: next,
+                note: txt(note),
+                correction: cur.correction || "",
+              };
+              save();
+              refresh();
+            });
+          });
+          row.querySelectorAll(".correction-opt").forEach((opt) => {
+            opt.addEventListener("click", () => {
+              const cur = state.claims[id] || {};
+              const nextVal =
+                cur.correction === opt.dataset.value ? "" : opt.dataset.value;
+              row.querySelectorAll(".correction-opt").forEach((o) =>
+                o.classList.toggle("selected", o.dataset.value === nextVal),
+              );
+              state.claims[id] = {
+                verdict: row.dataset.verdict || "",
+                note: txt(note),
+                correction: nextVal,
+              };
+              save();
+            });
+          });
+          if (note)
+            note.addEventListener("input", () => {
+              const cur = state.claims[id] || {};
+              state.claims[id] = {
+                verdict: row.dataset.verdict || "",
+                note: note.value,
+                correction: cur.correction || "",
+              };
+              save();
+            });
+
+          const s = state.claims[id];
+          if (s) {
+            if (note) note.value = s.note || "";
+            if (s.correction)
+              row.querySelectorAll(".correction-opt").forEach((o) =>
+                o.classList.toggle("selected", o.dataset.value === s.correction),
+              );
+            applyVerdict(row, s.verdict || "");
+          }
+        }
+
+        // ---------- Added claims (human authors what the AI missed) ----------
+        function renderAdded(item) {
+          const tr = document.createElement("tr");
+          tr.className = "added-row";
+          tr.dataset.addedId = item.id;
+          tr.innerHTML =
+            `<td>${item.id}</td><td>you</td>` +
+            `<td class="u-statement"><textarea class="added-text" name="added-${item.id}" placeholder="The thing I missed…"></textarea></td>` +
+            `<td><span class="badge src-user">you said</span></td>` +
+            `<td><span class="badge conf-high">high</span></td>` +
+            `<td><button type="button" class="remove-added">✕ remove</button></td>`;
+          uTableBody.appendChild(tr);
+          const ta = tr.querySelector(".added-text");
+          ta.value = item.text || "";
+          ta.addEventListener("input", () => {
+            item.text = ta.value;
+            save();
+          });
+          tr.querySelector(".remove-added").addEventListener("click", () => {
+            state.added = state.added.filter((x) => x.id !== item.id);
+            tr.remove();
+            save();
+            refresh();
+          });
+        }
+        const addBtn = document.getElementById("add-claim-btn");
+        if (addBtn) {
+          state.added.forEach(renderAdded);
+          addBtn.addEventListener("click", () => {
+            let n = state.added.length + 1;
+            let id = "A" + n;
+            while (state.added.some((x) => x.id === id)) id = "A" + ++n;
+            const item = { id: id, text: "" };
+            state.added.push(item);
+            renderAdded(item);
+            save();
+          });
+        }
+
+        // ---------- Tensions ----------
+        const tensionCards = Array.from(
+          document.querySelectorAll(".tension-card[data-id]"),
+        );
+        tensionCards.forEach((card) => {
+          const id = card.dataset.id;
+          const note = card.querySelector(".t-note");
+          card.querySelectorAll('input[type="radio"]').forEach((radio) => {
+            radio.addEventListener("change", () => {
+              card.dataset.choice = radio.value;
+              if (note) note.hidden = radio.value !== "other";
+              state.tensions[id] = { choice: radio.value, note: txt(note) };
+              save();
+              refresh();
+            });
+          });
+          if (note)
+            note.addEventListener("input", () => {
+              state.tensions[id] = {
+                choice: card.dataset.choice || "",
+                note: note.value,
+              };
+              save();
+            });
+          const s = state.tensions[id];
+          if (s && s.choice) {
+            card.querySelectorAll('input[type="radio"]').forEach((r) => {
+              if (r.value === s.choice) r.checked = true;
+            });
+            card.dataset.choice = s.choice;
+            if (note) {
+              note.hidden = s.choice !== "other";
+              note.value = s.note || "";
+            }
+          }
+        });
+
+        // ---------- Acceptance examples ----------
+        const exCards = Array.from(
+          document.querySelectorAll(".example-card[data-id]"),
+        );
+        exCards.forEach((card) => {
+          const id = card.dataset.id;
+          const note = card.querySelector(".ex-note");
+          card.querySelectorAll(".verdict-btn").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const next =
+                card.dataset.verdict === btn.dataset.verdict
+                  ? ""
+                  : btn.dataset.verdict;
+              if (next) card.dataset.verdict = next;
+              else card.removeAttribute("data-verdict");
+              card.querySelectorAll(".verdict-btn").forEach((b) =>
+                b.classList.toggle("selected", b.dataset.verdict === next),
+              );
+              if (note) note.hidden = next !== "no";
+              state.examples[id] = { verdict: next, note: txt(note) };
+              save();
+              refresh();
+            });
+          });
+          if (note)
+            note.addEventListener("input", () => {
+              state.examples[id] = {
+                verdict: card.dataset.verdict || "",
+                note: note.value,
+              };
+              save();
+            });
+          const s = state.examples[id];
+          if (s) {
+            if (s.verdict) card.dataset.verdict = s.verdict;
+            card.querySelectorAll(".verdict-btn").forEach((b) =>
+              b.classList.toggle("selected", b.dataset.verdict === s.verdict),
+            );
+            if (note) {
+              note.hidden = s.verdict !== "no";
+              note.value = s.note || "";
+            }
+          }
+        });
+
+        // ---------- Open questions ----------
+        const oqRows = Array.from(
+          document.querySelectorAll("#oq-table tbody tr[data-id]"),
+        );
+        oqRows.forEach((row) => {
+          const id = row.dataset.id;
+          const ta = row.querySelector("textarea");
+          if (!ta) return;
+          if (state.answers[id]) ta.value = state.answers[id];
+          ta.addEventListener("input", () => {
+            state.answers[id] = ta.value;
+            save();
           });
         });
-      });
+
+        // ---------- Live sync tally + approval gate ----------
+        function refresh() {
+          let agreed = 0;
+          let flagged = 0;
+          let pending = 0;
+          let highPending = 0;
+
+          claimRows().forEach((row) => {
+            paintRow(row);
+            const s = rowState(row);
+            if (s === "agreed") agreed++;
+            else if (s === "flagged") flagged++;
+            else {
+              pending++;
+              if (row.dataset.priority === "high") highPending++;
+            }
+          });
+          tensionCards.forEach((card) => {
+            if (card.dataset.choice) agreed++;
+            else {
+              pending++;
+              highPending++;
+            }
+          });
+          exCards.forEach((card) => {
+            const v = card.dataset.verdict;
+            if (v === "yes") agreed++;
+            else if (v === "no") flagged++;
+            else pending++;
+          });
+
+          const total = agreed + flagged + pending;
+          setText("#sync-confirmed", agreed);
+          setText("#sync-flagged", flagged);
+          setText("#sync-pending", pending);
+          document.getElementById("sync-bar-fill").style.width = total
+            ? (agreed / total) * 100 + "%"
+            : "0%";
+
+          const gate = document.getElementById("sync-gate");
+          if (highPending > 0) {
+            gate.textContent =
+              "⚠ " +
+              highPending +
+              " high-stakes item" +
+              (highPending > 1 ? "s" : "") +
+              " need a decision";
+            gate.className = "sync-gate warn";
+          } else if (pending > 0) {
+            gate.textContent =
+              pending + " item" + (pending > 1 ? "s" : "") + " left to review";
+            gate.className = "sync-gate";
+          } else if (flagged > 0) {
+            gate.textContent =
+              "✓ all reviewed · " + flagged + " to revise next pass";
+            gate.className = "sync-gate";
+          } else {
+            gate.textContent = "✓ fully synced — ready to approve";
+            gate.className = "sync-gate ok";
+          }
+        }
+
+        claimRows().forEach(wireClaim);
+        refresh();
+
+        // ---------- Review export (the manifest carried to the next pass) ----------
+        function labelFor(input) {
+          const label = input && input.closest("label");
+          const span = label && label.querySelector("span");
+          return span ? span.textContent.trim() : "";
+        }
+        function checkedLabel(container, name) {
+          const input = container.querySelector(
+            'input[name="' + name + '"]:checked',
+          );
+          return input ? labelFor(input) : "";
+        }
+
+        function buildReview() {
+          const confirmed = [];
+          const forks = [];
+          const corrections = [];
+          const unreviewed = [];
+
+          claimRows().forEach((row) => {
+            const id = row.dataset.id;
+            const stmt = row.dataset.statement || "";
+            if (row.dataset.fork === "true") {
+              const c = row.dataset.forkChoice;
+              if (!c) {
+                unreviewed.push(id);
+              } else if (c === "neither") {
+                const note = txt(row.querySelector(".u-note"));
+                corrections.push(
+                  `${id} [FORK: none fit] "${stmt}"\n  Right reading: ${note || "(no note)"}`,
+                );
+              } else {
+                forks.push(`${id} → "${checkedLabel(row, "fork-" + id)}"`);
+                confirmed.push(id);
+              }
+              return;
+            }
+            const v = row.dataset.verdict;
+            const cur = state.claims[id] || {};
+            if (v === "yes") {
+              confirmed.push(id);
+            } else if (v === "no" || v === "partly") {
+              const tag = v === "no" ? "WRONG" : "PARTLY";
+              const fix = cur.correction
+                ? `right answer: "${cur.correction}"  (structured)`
+                : `note: ${txt(row.querySelector(".u-note")) || "(no note)"}  (prose)`;
+              corrections.push(`${id} [${tag}] "${stmt}"\n  ${fix}`);
+            } else {
+              unreviewed.push(id);
+            }
+          });
+
+          const added = state.added
+            .filter((a) => (a.text || "").trim())
+            .map((a) => `+${a.id}: ${a.text.trim()}`);
+
+          const tensions = tensionCards.map((card) => {
+            const id = card.dataset.id;
+            const c = card.dataset.choice;
+            if (!c) return `${id}: UNRESOLVED`;
+            if (c === "other")
+              return `${id} → other: ${txt(card.querySelector(".t-note")) || "(no note)"}`;
+            return `${id} → ${checkedLabel(card, "tension-" + id)}`;
+          });
+
+          const exApproved = [];
+          const exRejected = [];
+          const exUnreviewed = [];
+          exCards.forEach((card) => {
+            const id = card.dataset.id;
+            const v = card.dataset.verdict;
+            if (v === "yes") exApproved.push(id);
+            else if (v === "no")
+              exRejected.push(
+                `${id}: ${card.dataset.example}\n  should be: ${txt(card.querySelector(".ex-note")) || "(no note)"}`,
+              );
+            else exUnreviewed.push(id);
+          });
+
+          const answers = oqRows.map((row) => {
+            const q = row.children[1] ? row.children[1].textContent.trim() : "";
+            const a = txt(row.querySelector("textarea"));
+            return `${row.dataset.id}: ${q}\n→ ${a || "(no answer)"}`;
+          });
+
+          return [
+            `ARCH REVIEW — ${docName} ${docVersion} [${docStatus.toUpperCase()}]`,
+            "",
+            "YOUR SUCCESS STATEMENT (your words):",
+            state.recall.trim() || "(not provided)",
+            "(reconcile this against the AI Overview at the top of the doc)",
+            "",
+            `CONFIRMED CLAIMS: ${confirmed.join(", ") || "none"}`,
+            "",
+            forks.length ? "FORK CHOICES:\n" + forks.join("\n") : "FORK CHOICES: none",
+            "",
+            "CORRECTIONS (apply these):",
+            corrections.length ? corrections.join("\n") : "none",
+            "",
+            added.length
+              ? "NEW CLAIMS YOU ADDED:\n" + added.join("\n")
+              : "NEW CLAIMS YOU ADDED: none",
+            "",
+            "TENSIONS:",
+            tensions.length ? tensions.join("\n") : "none",
+            "",
+            "ACCEPTANCE EXAMPLES:",
+            `  APPROVED (binding): ${exApproved.join(", ") || "none"}`,
+            exRejected.length
+              ? "  REJECTED:\n    " + exRejected.join("\n    ")
+              : "  REJECTED: none",
+            `  UNREVIEWED: ${exUnreviewed.join(", ") || "none"}`,
+            "",
+            "OPEN QUESTION ANSWERS:",
+            answers.length ? answers.join("\n") : "none",
+            "",
+            `UNREVIEWED CLAIMS: ${unreviewed.join(", ") || "none"}`,
+            "",
+            "NEXT: reconcile my overview with your success statement; apply the corrections, fork choices, new claims, tension resolutions, and rejected-example fixes to the arch JSON; bump the version and add a revision-log row; regenerate with arch-inject.js. On APPROVED, the CONFIRMED claims + APPROVED examples are the acceptance criteria the implementation must satisfy — carry them into /feature as verification anchors.",
+          ].join("\n");
+        }
+
+        document
+          .getElementById("copy-review-btn")
+          .addEventListener("click", (e) => {
+            const btn = e.currentTarget;
+            navigator.clipboard.writeText(buildReview()).then(() => {
+              const original = btn.textContent;
+              btn.textContent = "✓ Copied";
+              btn.classList.add("copied");
+              setTimeout(() => {
+                btn.textContent = original;
+                btn.classList.remove("copied");
+              }, 1500);
+            });
+          });
+      })();
     </script>
   </body>
 </html>
