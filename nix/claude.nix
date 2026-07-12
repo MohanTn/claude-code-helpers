@@ -10,7 +10,6 @@
     ".claude/hooks".source = ../claude/hooks;
     ".claude/skills".source = ../claude/skills;
     ".claude/commands".source = ../claude/commands;
-    ".claude/agents".source = ../claude/agents;
   };
 
   # settings.json is the one config file Claude Code itself edits at runtime
