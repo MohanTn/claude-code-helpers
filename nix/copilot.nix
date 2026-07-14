@@ -20,7 +20,6 @@
   home.file = {
     ".copilot/hooks".source = ../copilot/hooks;
     ".copilot/copilot-instructions.md".source = ../copilot/copilot-instructions.md;
-    ".copilot/agents".source = ../copilot/agents;
     ".copilot/skills".source = ../copilot/skills;
     ".copilot/statusline-usage.py".source = ../copilot/statusline-usage.py;
   };
