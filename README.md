@@ -1,15 +1,14 @@
 # mohan-dotfiles
 
-Reproducible machine setup as a Nix flake: Claude Code config, Copilot CLI hooks, zsh + oh-my-zsh, git, Neovim (LazyVim), pi extensions, and every tool they depend on. Clone it on any Linux box or WSL distro, run one script, and the machine is set up the way I like it.
+Reproducible machine setup as a Nix flake: Claude Code config, zsh + oh-my-zsh, git, Neovim (LazyVim), and every tool they depend on. Clone it on any Linux box or WSL distro, run one script, and the machine is set up the way I like it.
 
 ```
 flake.nix     inputs (pinned nixpkgs + home-manager) and CI checks
 nix/          one Home Manager module per concern:
-              packages, zsh, git, agents, claude, copilot, nvim, pi
-agents/       ~/.agents (common layer: tool-agnostic utility scripts/templates,
-              e.g. /arch's HTML template + injection script; no prose lives here)
-claude/       ~/.claude/{settings.json,CLAUDE.md,hooks,skills,commands,agents,statusline-usage.py}
-copilot/      ~/.copilot/{copilot-instructions.md,hooks,agents,skills} (Copilot CLI port of the claude/ config)
+              packages, zsh, git, agents, claude, nvim
+agents/       ~/.agents (tool-agnostic layer: AGENTS.md global instructions
+              plus skills/, also linked to ~/.claude/skills)
+claude/       ~/.claude/{settings.json,CLAUDE.md,hooks,statusline-usage.py}
 zsh/          prompt.zsh: custom async prompt sourced by nix/zsh.nix
 nvim/         ~/.config/nvim (LazyVim)
 setup.sh      single entry point: setup, apply/update, drift audit, input upgrade
@@ -102,7 +101,7 @@ Updating pinned packages:
 
 ## Testing
 
-`nix flake check --impure` runs all CI gates locally: it builds the full home configuration, runs the Claude and Copilot hook regression suites, and lints + tests `setup.sh` (shellcheck plus doctor drift-audit cases against a synthetic Home Manager profile). The hooks can also be exercised directly:
+`nix flake check --impure` runs all CI gates locally: it builds the full home configuration, runs the Claude hook regression suite, and lints + tests `setup.sh` (shellcheck plus doctor drift-audit cases against a synthetic Home Manager profile). The hooks can also be exercised directly:
 
 ```
 claude/hooks/test-hook.sh list                           # list hooks + what each does
