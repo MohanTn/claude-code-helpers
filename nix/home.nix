@@ -15,9 +15,7 @@ in
     ./git.nix
     ./agents.nix
     ./claude.nix
-    ./copilot.nix
     ./nvim.nix
-    ./pi.nix
     configPath
   ];
 

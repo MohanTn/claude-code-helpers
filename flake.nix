@@ -1,5 +1,5 @@
 {
-  description = "Mohan's reproducible machine setup: Claude Code, Copilot CLI hooks, zsh, git, Neovim, pi (Home Manager flake)";
+  description = "Mohan's reproducible machine setup: Claude Code, zsh, git, Neovim (Home Manager flake)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
@@ -51,31 +51,6 @@
             chmod -R u+w "$HOME/.claude/hooks"
             bash "$HOME/.claude/hooks/test-hook.sh" selftest > "$out"
             cat "$out"
-          '';
-
-        # Same regression suite for the Copilot CLI port of the hooks, run in
-        # a sandbox HOME exactly the way Copilot invokes them (camelCase JSON
-        # payload on stdin, JSON decisions on stdout).
-        copilot-hooks-selftest = pkgs.runCommand "copilot-hooks-selftest"
-          { nativeBuildInputs = [ pkgs.bash pkgs.jq pkgs.git ]; }
-          ''
-            export HOME="$TMPDIR/home"
-            mkdir -p "$HOME/.copilot"
-            cp -r ${./copilot/hooks} "$HOME/.copilot/hooks"
-            chmod -R u+w "$HOME/.copilot/hooks"
-            bash "$HOME/.copilot/hooks/test-hook.sh" selftest > "$out"
-            cat "$out"
-          '';
-
-        # The Copilot status line's unit tests: month-to-date credit summing
-        # from session event logs, rendering, and the "always exit 0, one
-        # line" footer contract, run against fixture session-state dirs.
-        copilot-statusline = pkgs.runCommand "copilot-statusline"
-          { nativeBuildInputs = [ pkgs.python3 ]; }
-          ''
-            cp ${./copilot/statusline-usage.py} statusline-usage.py
-            cp ${./copilot/statusline-usage.test.py} statusline-usage.test.py
-            python3 statusline-usage.test.py 2>&1 | tee "$out"
           '';
 
         # setup.sh: lint it, then exercise the doctor drift audit against a

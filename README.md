@@ -1,18 +1,16 @@
 # mohan-dotfiles
 
-Reproducible machine setup as a Nix flake: Claude Code config, Copilot CLI hooks, zsh + oh-my-zsh, git, Neovim (LazyVim), pi extensions, and every tool they depend on. Clone it on any Linux box or WSL distro, run one script, and the machine is set up the way I like it.
+Reproducible machine setup as a Nix flake: Claude Code config, zsh + oh-my-zsh, git, Neovim (LazyVim), and every tool they depend on. Clone it on any Linux box or WSL distro, run one script, and the machine is set up the way I like it.
 
 ```
 flake.nix     inputs (pinned nixpkgs + home-manager) and CI checks
 nix/          one Home Manager module per concern:
-              packages, zsh, git, agents, claude, copilot, nvim, pi
-agents/       ~/.agents (common layer: tool-agnostic utility scripts/templates,
-              e.g. /arch's HTML template + injection script; no prose lives here)
-claude/       ~/.claude/{settings.json,CLAUDE.md,hooks,skills,commands,agents,statusline-usage.py}
-copilot/      ~/.copilot/{copilot-instructions.md,hooks,agents,skills} (Copilot CLI port of the claude/ config)
+              packages, zsh, git, agents, claude, nvim
+agents/       ~/.agents (tool-agnostic layer: AGENTS.md global instructions
+              plus skills/, also linked to ~/.claude/skills)
+claude/       ~/.claude/{settings.json,CLAUDE.md,hooks,statusline-usage.py}
 zsh/          prompt.zsh: custom async prompt sourced by nix/zsh.nix
 nvim/         ~/.config/nvim (LazyVim)
-pi/           ~/.pi/agent/extensions
 setup.sh      single entry point: setup, apply/update, drift audit, input upgrade
 setup-packages.sh  interactive picker for optional packages (Docker, Python, etc.)
 ```
@@ -70,43 +68,6 @@ To add a new non-secret environment variable for good, add it to the `home.sessi
 * Opening a new interactive terminal prints a one-line typewriter-animated greeting.
 
 Edit `zsh/prompt.zsh` directly (plain zsh, no Nix escaping needed) and re-run `./setup.sh` to change it.
-
-## Common layer (`agents/`)
-
-`agents/` (linked whole to `~/.agents` by `nix/agents.nix`) holds content genuinely shared across Claude Code, Copilot CLI, and Pi, with zero tool-specific wording: utility scripts and templates, not prose. Today that's just `agents/skills/arch/` (`arch-template.html`, `arch-inject.js`, `arch-inject.test.js`), the HTML template and Node.js injection script behind both `claude/commands/arch.md` and `copilot/skills/arch/SKILL.md` — each tool's instruction file generates a small JSON payload and calls `~/.agents/skills/arch/arch-inject.js` on it, so the template/script exist in exactly one place instead of being copy-pasted per tool.
-
-Instruction prose (`arch.md`, `SKILL.md`, the charter files, agent personas) stays in each tool's own directory even where it's largely similar: Claude Code and Copilot CLI expect config at fixed per-tool paths with slightly different conventions (`$ARGUMENTS` vs. natural phrasing, `tools:` frontmatter syntax, `SendMessage` vs. `delegate`), and there's no runtime mechanism here for one tool to include another's file. Only add something to `agents/` when it is a real, executable/renderable artifact with no tool-specific content, not a shortcut for "these two files look similar." (token-efficiency now lives in `claude/skills/token-efficiency/SKILL.md` and `copilot/skills/token-efficiency/SKILL.md` for exactly this reason: prose does not belong in `agents/`.)
-
-## Pi agent
-
-`pi/agent/extensions/` holds two extensions for the [Pi coding agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) (`@earendil-works/pi-coding-agent`), symlinked into `~/.pi/agent/extensions/` by the Nix flake:
-
-- `hooks/` — a TypeScript port of the same guard/goal/loop-breaker behavior as `claude/hooks`, wired into Pi's extension lifecycle instead of Claude Code's hook events: session-start digest injection, GOAL capture + YAGNI/self-check prompting, edit/write no-op guards, import resolution + `tsc`/`dotnet build` gates, `sonar_lite.py` static analysis, and the consecutive-tool-call loop breaker. It intentionally excludes anything `claude/hooks` has since dropped (bash-command dedup, read caching, architecture hints, TTS/ding, pre-compact) — keep the ports in sync when one changes (see also `copilot/` below).
-- `pipeline-panel/` — a full-screen dashboard extension for launching and watching `pipeline-worker` runs (worktree, MR/PR, CI) from inside Pi.
-
-Each extension has its own test suite (`node:test` + `tsx`):
-
-```
-cd pi/agent/extensions/hooks && npm install && npm test        # or: npm run typecheck
-cd pi/agent/extensions/pipeline-panel && npm install && npm test
-```
-
-## Copilot CLI
-
-Besides the hooks below, `nix/copilot.nix` links three more Copilot ports of the Claude config: `copilot/copilot-instructions.md` → `~/.copilot/copilot-instructions.md` (global user instructions: the same fundamentals, Fable-charter working style, and feature-team workflow as `claude/CLAUDE.md`), `copilot/agents/` → `~/.copilot/agents` (the five feature-team custom agents as `*.agent.md`, selectable with `/agent` or delegated as subagents), and `copilot/skills/` → `~/.copilot/skills` (personal-skill ports of the `claude/commands` prompts: `feature` and `arch`; Copilot has no custom slash commands, so they trigger by name in a prompt). `arch`'s HTML template and injection script are not duplicated here at all; both this skill and Claude's `/arch` command call the single copy at `~/.agents/skills/arch/` (see "Common layer" above). Keep the prose in sync with the `claude/` counterparts when one side changes.
-
-### Hooks
-
-`copilot/hooks/` is a shell port of `claude/hooks` for [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks), linked to `~/.copilot/hooks` by `nix/copilot.nix` (Copilot loads every `*.json` there as user-level hook config; `mohan-hooks.json` wires the events to the scripts in `scripts/`). Same behaviors, adapted to Copilot's contract (camelCase payloads on stdin, JSON decisions on stdout instead of exit-2 blocks):
-
-- `sessionStart` — project digest + GOAL/GOAL_CHECK convention injected as `additionalContext` (Copilot ignores `userPromptSubmitted` output, so the per-prompt GOAL reminder from `claude/hooks` moves here, once per session).
-- `preToolUse` — edit/write no-op guard and the consecutive-tool-call loop breaker, denying via `permissionDecision`.
-- `postToolUse` — import resolution + `tsc`/`dotnet build` gates; findings come back as `additionalContext` (Copilot's postToolUse cannot block).
-- `agentStop` — goal-check gate: blocks the first stop after a stated `GOAL:` with no later `GOAL_CHECK:`, scanning the transcript file at stop time (no transcript path exists at preToolUse, so there is no separate goal-capture hook).
-- `userPromptSubmitted` / `sessionEnd` — per-prompt state reset and stale-state pruning.
-
-State lives under `~/.local/state/copilot-hooks/`. The regression suite mirrors the Claude one: `copilot/hooks/test-hook.sh selftest` (also a flake check).
-
 ### Not managed by Nix (by design)
 
 * **Claude Code, pi, and the other npm CLIs** (`pipeline-worker`, `gemini-cli`, `freebuff`, `mcp-sonar-analysis`, `@github/copilot`): these self-update and move fast, so activation bootstraps them via their native installers only when missing (claude to `~/.local/bin`, npm globals to `~/.npm-global`).
@@ -140,17 +101,16 @@ Updating pinned packages:
 
 ## Testing
 
-`nix flake check --impure` runs all CI gates locally: it builds the full home configuration, runs the Claude and Copilot hook regression suites, and lints + tests `setup.sh` (shellcheck plus doctor drift-audit cases against a synthetic Home Manager profile). The hooks can also be exercised directly:
+`nix flake check --impure` runs all CI gates locally: it builds the full home configuration, runs the Claude hook regression suite, and lints + tests `setup.sh` (shellcheck plus doctor drift-audit cases against a synthetic Home Manager profile). The hooks can also be exercised directly:
 
 ```
 claude/hooks/test-hook.sh list                           # list hooks + what each does
 claude/hooks/test-hook.sh run pre-tool-use-edit-guard.sh # run with a built-in sample payload
 echo '{"...":"..."}' | claude/hooks/test-hook.sh run <hook.sh> -   # custom payload
 claude/hooks/test-hook.sh selftest                       # regression checks
-copilot/hooks/test-hook.sh selftest                      # same harness for the Copilot port
 ```
 
-Hook runtime state (session logs, loop counters, digests) lives under `~/.local/state/claude-hooks/` and `~/.local/state/copilot-hooks/`, never in this repo.
+Hook runtime state (session logs, loop counters, digests) lives under `~/.local/state/claude-hooks/`, never in this repo.
 
 ## WSL notes
 

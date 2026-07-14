@@ -26,15 +26,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/scaffold-intent-capture.sh\"",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
             "command": "node \"$HOME/.claude/hooks/scaffold/hooks/user-prompt-submit.mjs\""
           }
         ]

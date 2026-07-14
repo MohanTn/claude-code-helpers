@@ -8,8 +8,9 @@
     ".claude/CLAUDE.md".source = ../claude/CLAUDE.md;
     ".claude/statusline-usage.py".source = ../claude/statusline-usage.py;
     ".claude/hooks".source = ../claude/hooks;
-    ".claude/skills".source = ../claude/skills;
-    ".claude/commands".source = ../claude/commands;
+    # Skills live in the tool-agnostic agents/ layer; link them where
+    # Claude Code discovers personal skills.
+    ".claude/skills".source = ../agents/skills;
   };
 
   # settings.json is the one config file Claude Code itself edits at runtime

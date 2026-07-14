@@ -1,14 +1,11 @@
 { ... }:
 
 {
-  # The common layer shared between Claude Code and Copilot CLI: utility
-  # scripts and templates with no tool-specific content (currently /arch
-  # and /featurePlan — each is an HTML template + a Node.js injection
-  # script + a unit test). Deployed once to ~/.agents; claude/commands/
-  # <name>.md and copilot/skills/<name>/SKILL.md each reference their own
-  # fixed path under this directory instead of each keeping its own copy.
+  # The tool-agnostic agents layer: AGENTS.md (global instructions,
+  # referenced by claude/CLAUDE.md) and skills/ (also linked to
+  # ~/.claude/skills by claude.nix so Claude Code discovers them).
   # Whole-directory link is safe here because ~/.agents is not shared with
-  # any other home.file target (unlike ~/.claude or ~/.copilot, which
-  # already own their whole subtrees).
+  # any other home.file target (unlike ~/.claude, which already owns its
+  # whole subtree).
   home.file.".agents".source = ../agents;
 }
