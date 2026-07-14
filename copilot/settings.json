@@ -1,0 +1,6 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "python3 \"$HOME/.copilot/statusline-usage.py\""
+  }
+}

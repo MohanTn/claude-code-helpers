@@ -67,6 +67,17 @@
             cat "$out"
           '';
 
+        # The Copilot status line's unit tests: month-to-date credit summing
+        # from session event logs, rendering, and the "always exit 0, one
+        # line" footer contract, run against fixture session-state dirs.
+        copilot-statusline = pkgs.runCommand "copilot-statusline"
+          { nativeBuildInputs = [ pkgs.python3 ]; }
+          ''
+            cp ${./copilot/statusline-usage.py} statusline-usage.py
+            cp ${./copilot/statusline-usage.test.py} statusline-usage.test.py
+            python3 statusline-usage.test.py 2>&1 | tee "$out"
+          '';
+
         # setup.sh: lint it, then exercise the doctor drift audit against a
         # synthetic Home Manager profile (clean, hand-edited, deleted).
         setup-script = pkgs.runCommand "setup-script"
