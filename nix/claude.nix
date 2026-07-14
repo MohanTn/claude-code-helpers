@@ -1,15 +1,10 @@
 { pkgs, lib, ... }:
 
 {
-  # Per-entry links only. Claude Code owns ~/.claude itself: projects, todos,
-  # plans, memory, and settings.local.json are runtime data that must stay
-  # writable, so the directory is never linked as a whole.
   home.file = {
     ".claude/CLAUDE.md".source = ../claude/CLAUDE.md;
     ".claude/statusline-usage.py".source = ../claude/statusline-usage.py;
     ".claude/hooks".source = ../claude/hooks;
-    # Skills live in the tool-agnostic agents/ layer; link them where
-    # Claude Code discovers personal skills.
     ".claude/skills".source = ../agents/skills;
   };
 

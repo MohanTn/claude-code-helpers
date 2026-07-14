@@ -44,7 +44,7 @@ in
     '');
 
     installHerdr = mkIf cfg.enableHerdr (hm.dag.entryAfter [ "installPackages" ] ''
-      export PATH="${pkgs.curl}/bin:$PATH"
+      export PATH="${pkgs.curl}/bin:${pkgs.gawk}/bin:$HOME/.local/bin:$PATH"
       echo "Installing herdr from https://herdr.dev/install.sh"
       ($DRY_RUN_CMD curl -fsSL https://herdr.dev/install.sh | $DRY_RUN_CMD sh) || echo "Warning: herdr installation failed, continuing" >&2
     '');
