@@ -1,6 +1,11 @@
 { pkgs, ... }:
 
 {
+  # lets GTK/Pango apps (e.g. Ptyxis) discover home.packages fonts, including
+  # the Nerd Font below that tmux's catppuccin status bar and Claude Code
+  # icons depend on
+  fonts.fontconfig.enable = true;
+
   home.packages = with pkgs; [
     # toolchain the configs in this repo depend on
     ripgrep # Telescope live-grep
@@ -12,6 +17,14 @@
     gcc # Treesitter parser builds
     gnumake
     curl
+
+    # Nerd Font glyphs for tmux (catppuccin status bar) and terminal icons.
+    # symbols-only is a dedicated icon fallback: some Powerline glyphs
+    # (e.g. U+E0B6) render incorrectly straight out of the patched
+    # jetbrains-mono build on this system, so the terminal font is set to
+    # fall back to this font (see nix/README or Ptyxis profile font-name).
+    nerd-fonts.jetbrains-mono
+    nerd-fonts.symbols-only
 
     # dev platforms
     dotnet-sdk_8
