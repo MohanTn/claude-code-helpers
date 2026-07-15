@@ -65,6 +65,13 @@
       set -g status-left "#{E:@catppuccin_status_session}"
       set -g status-right-length 100
       set -g status-right "#{E:@catppuccin_status_directory}#{E:@catppuccin_status_date_time}"
+
+      # mouse-drag and copy-mode selections otherwise stay in tmux's own
+      # buffer and never reach the Wayland clipboard, so Ctrl+Shift+V outside
+      # tmux pastes nothing
+      bind-key -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "wl-copy"
+      bind-key -T copy-mode-vi Enter send-keys -X copy-pipe-and-cancel "wl-copy"
+      bind-key -T copy-mode-vi y send-keys -X copy-pipe-and-cancel "wl-copy"
     '';
   };
 }

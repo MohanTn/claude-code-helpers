@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 
+- Adds complete Copilot CLI hook infrastructure (9 scripts reusing Claude hooks via payload translation), documents the scaffold-pack-author skill for creating in-tree template packs, wires both into Nix home-manager, and fixes tmux clipboard sync to Wayland. Includes selftest harness to validate hook behavior.
 - Adds Ptyxis terminal font configuration (JetBrainsMono Nerd Font), integrates tmux-nerd-font-window-name plugin for icon-based window naming, and replaces inline zsh prompt with powerlevel10k via zinit plugin manager.
 - Addresses glyph rendering bugs in tmux catppuccin status bar by switching to basic style and adding Nerd Font fallbacks. Removes command duration tracking from zsh prompt and adds zoxide for frecency-based directory jumping.
 - Major dotfiles refactor: replaces LazyVim with kickstart.nvim base (~1000 lines), inlines zsh prompt (removing oh-my-zsh), adds home-manager-driven tmux config with catppuccin, and removes herdr installer option to consolidate dependencies.

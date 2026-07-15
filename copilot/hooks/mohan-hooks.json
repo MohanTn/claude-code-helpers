@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      { "type": "command", "bash": "bash \"$HOME/.copilot/hooks/session-start.sh\"", "timeoutSec": 15 }
+    ],
+    "userPromptSubmitted": [
+      { "type": "command", "bash": "bash \"$HOME/.copilot/hooks/user-prompt-submit.sh\"", "timeoutSec": 5 }
+    ],
+    "preToolUse": [
+      { "type": "command", "bash": "bash \"$HOME/.copilot/hooks/pre-tool-use.sh\"", "timeoutSec": 10 }
+    ],
+    "postToolUse": [
+      { "type": "command", "bash": "bash \"$HOME/.copilot/hooks/post-tool-use.sh\"", "timeoutSec": 60 }
+    ],
+    "agentStop": [
+      { "type": "command", "bash": "bash \"$HOME/.copilot/hooks/agent-stop.sh\"", "timeoutSec": 10 }
+    ],
+    "sessionEnd": [
+      { "type": "command", "bash": "bash \"$HOME/.copilot/hooks/session-end-cleanup.sh\"", "timeoutSec": 10 }
+    ]
+  }
+}

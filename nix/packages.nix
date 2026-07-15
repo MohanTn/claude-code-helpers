@@ -36,6 +36,7 @@
     gh
 
     # quality of life on any Linux box or fresh WSL image
+    wl-clipboard # bridges tmux copy-mode selections to the system clipboard
     bat
     tree
     htop
