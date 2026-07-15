@@ -3,7 +3,6 @@
 {
   home.packages = with pkgs; [
     # toolchain the configs in this repo depend on
-    neovim
     ripgrep # Telescope live-grep
     fd # Telescope file finder
     jq # every Claude Code hook

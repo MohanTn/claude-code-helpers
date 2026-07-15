@@ -15,14 +15,14 @@ in
     ./git.nix
     ./agents.nix
     ./claude.nix
+    ./tmux.nix
     ./nvim.nix
     configPath
   ];
 
   # `username` comes from $USER, read impurely in flake.nix and threaded in
   # via extraSpecialArgs, so this config works unmodified on any machine or
-  # account name. The repo itself still needs to live at
-  # ~/REPO/mohan-dotfiles (see nvim.nix).
+  # account name. The repo itself still needs to live at ~/REPO/mohan-dotfiles.
   home.username = username;
   home.homeDirectory = "/home/${username}";
 

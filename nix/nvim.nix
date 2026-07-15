@@ -1,12 +1,16 @@
-{ config, ... }:
+{ ... }:
 
-let
-  repo = "${config.home.homeDirectory}/REPO/mohan-dotfiles";
-in
 {
-  # The single out-of-store exception: LazyVim writes lazy-lock.json into the
-  # config dir on :Lazy update, and that lockfile is committed on purpose to
-  # pin plugin versions. A read-only store link would break plugin updates,
-  # so ~/.config/nvim points at the live repo checkout instead.
-  xdg.configFile."nvim".source = config.lib.file.mkOutOfStoreSymlink "${repo}/nvim";
+  programs.neovim = {
+    enable = true;
+    defaultEditor = true;
+    viAlias = true;
+    vimAlias = true;
+  };
+
+  # kickstart.nvim (lazy.nvim-based, C#/TypeScript LSP servers added), vendored
+  # under nvim/ and symlinked straight at this checkout, same as every other
+  # tool in this repo. Plugin/LSP installs still happen at runtime under
+  # stdpath('data') (~/.local/share/nvim), same as npm/pip caches elsewhere.
+  home.file.".config/nvim".source = ../nvim;
 }

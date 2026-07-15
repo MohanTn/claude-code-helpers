@@ -4,16 +4,6 @@
   programs.zsh = {
     enable = true;
 
-    oh-my-zsh = {
-      enable = true;
-      # Prompt itself comes from zsh/prompt.zsh below, not an oh-my-zsh theme.
-      theme = "";
-      plugins = [ "git" ];
-      extraConfig = ''
-        ENABLE_CORRECTION="true"
-      '';
-    };
-
     shellAliases = {
       cc = "claude --dangerously-skip-permissions";
       repo = "cd $HOME/REPO";
@@ -21,6 +11,8 @@
     };
 
     initContent = ''
+      setopt CORRECT
+
       # nvim as editor (plain vim over SSH)
       if [[ -n $SSH_CONNECTION ]]; then
         export EDITOR='vim'
@@ -42,7 +34,32 @@
       command -v dircolors >/dev/null 2>&1 && eval "$(dircolors -b)"
       export LS_COLORS="''${LS_COLORS}:di=01;36"
 
-      source ${../zsh/prompt.zsh}
+      # Prompt: Status + Exit Code + Duration (option 2)
+      typeset -g _cmd_start_time=0
+      typeset -g _cmd_duration=""
+
+      _cmd_preexec() {
+        _cmd_start_time=$EPOCHSECONDS
+      }
+
+      _cmd_precmd() {
+        if (( _cmd_start_time > 0 )); then
+          local elapsed=$(( EPOCHSECONDS - _cmd_start_time ))
+          _cmd_start_time=0
+          if (( elapsed >= 1 )); then
+            _cmd_duration="''${elapsed}s "
+          else
+            _cmd_duration=""
+          fi
+        fi
+      }
+
+      preexec_functions+=(_cmd_preexec)
+      precmd_functions+=(_cmd_precmd)
+
+      PROMPT='%F{blue}%n%f %F{cyan}%~%f
+%F{green}%(?.✓.✗)%f '
+      RPROMPT='%F{yellow}$_cmd_duration%?|%j%f'
 
       # `axi` wrapper for chrome-devtools-axi: uses Google Chrome when
       # installed (setup.sh handles that on apt machines), otherwise starts a

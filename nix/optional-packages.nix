@@ -10,7 +10,6 @@ in
     enableDocker = mkEnableOption "Docker and Docker Compose";
     enablePython = mkEnableOption "Python dev tools";
     enableGitHubCopilot = mkEnableOption "GitHub Copilot CLI installer";
-    enableHerdr = mkEnableOption "Herdr installer";
     enablePipelineWorker = mkEnableOption "Pipeline Worker npm package";
     enableLocalScribe = mkEnableOption "LocalScribe (from GitHub releases)";
     enableGitConfig = mkEnableOption "Git configuration (userName and userEmail)";
@@ -41,12 +40,6 @@ in
       $DRY_RUN_CMD mkdir -p "$NPM_CONFIG_PREFIX"
       echo "Installing pipeline-worker..."
       $DRY_RUN_CMD npm install --global --no-save pipeline-worker
-    '');
-
-    installHerdr = mkIf cfg.enableHerdr (hm.dag.entryAfter [ "installPackages" ] ''
-      export PATH="${pkgs.curl}/bin:${pkgs.gawk}/bin:$HOME/.local/bin:$PATH"
-      echo "Installing herdr from https://herdr.dev/install.sh"
-      ($DRY_RUN_CMD curl -fsSL https://herdr.dev/install.sh | $DRY_RUN_CMD sh) || echo "Warning: herdr installation failed, continuing" >&2
     '');
 
     installCopilot = mkIf cfg.enableGitHubCopilot (hm.dag.entryAfter [ "installPackages" ] ''
