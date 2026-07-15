@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 
+- Major dotfiles refactor: replaces LazyVim with kickstart.nvim base (~1000 lines), inlines zsh prompt (removing oh-my-zsh), adds home-manager-driven tmux config with catppuccin, and removes herdr installer option to consolidate dependencies.
 - Removed documentation comments from claude.nix file configuration and expanded PATH in herdr installer to include gawk and ~/.local/bin, ensuring the installation script can access required tools.
 - Move shared skills to `agents/` directory for reuse, remove Copilot and Pi infrastructure, and simplify the project architecture to focus on Claude Code. The `claude/CLAUDE.md` now references the consolidated `agents/AGENTS.md`, eliminating duplicated instruction prose.
 - This refactor splits the previous `/arch` skill (which covered both system architecture and code-level planning in one tool with topics/options) into two: `/arch` now provides full architecture & solution planning with system context, containers, ADRs, quality attributes, security, deployment, risks, and roadmap; the new `/featurePlan` skill handles code-level implementation planning with file manifests, pseudo-code, contracts, edge cases, and tests. Additionally, prose files (`token-efficiency/SKILL.md`) are moved from the shared `agents/` layer to per-tool directories (`claude/skills/`, `copilot/skills/`) to enforce the rule that `agents/` contains only executable/renderable artifacts (templates, scripts), not prose.

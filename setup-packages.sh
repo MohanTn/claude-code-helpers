@@ -42,10 +42,9 @@ ask_yes_no() {
 DOCKER=$(ask_yes_no "1. Install Docker and Docker Compose?" "n")
 PYTHON=$(ask_yes_no "2. Install Python dev tools (python3, poetry, pip-tools)?" "n")
 PIPELINE_WORKER=$(ask_yes_no "3. Install pipeline-worker (npm)?" "n")
-HERDR=$(ask_yes_no "4. Install herdr?" "n")
-COPILOT=$(ask_yes_no "5. Install GitHub Copilot CLI?" "n")
-LOCAL_SCRIBE=$(ask_yes_no "6. Install LocalScribe (from GitHub releases)?" "n")
-GIT_CONFIG=$(ask_yes_no "7. Configure Git (set userName and userEmail)?" "n")
+COPILOT=$(ask_yes_no "4. Install GitHub Copilot CLI?" "n")
+LOCAL_SCRIBE=$(ask_yes_no "5. Install LocalScribe (from GitHub releases)?" "n")
+GIT_CONFIG=$(ask_yes_no "6. Configure Git (set userName and userEmail)?" "n")
 
 echo ""
 echo "Generating configuration file..."
@@ -62,7 +61,6 @@ cat > "$CONFIG_FILE" << EOF
     enableDocker = ${DOCKER};
     enablePython = ${PYTHON};
     enablePipelineWorker = ${PIPELINE_WORKER};
-    enableHerdr = ${HERDR};
     enableGitHubCopilot = ${COPILOT};
     enableLocalScribe = ${LOCAL_SCRIBE};
     enableGitConfig = ${GIT_CONFIG};
@@ -76,7 +74,6 @@ echo "Selected packages:"
 [ "$DOCKER" = "true" ] && echo "  ✓ Docker and Docker Compose"
 [ "$PYTHON" = "true" ] && echo "  ✓ Python dev tools"
 [ "$PIPELINE_WORKER" = "true" ] && echo "  ✓ pipeline-worker"
-[ "$HERDR" = "true" ] && echo "  ✓ herdr"
 [ "$COPILOT" = "true" ] && echo "  ✓ GitHub Copilot CLI"
 [ "$LOCAL_SCRIBE" = "true" ] && echo "  ✓ LocalScribe (from GitHub)"
 [ "$GIT_CONFIG" = "true" ] && echo "  ✓ Git configuration (MohanTn / mohan.tn100@gmail.com)"

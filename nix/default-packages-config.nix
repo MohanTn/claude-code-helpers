@@ -8,7 +8,6 @@
     enableDocker = false;
     enablePython = false;
     enablePipelineWorker = false;
-    enableHerdr = false;
     enableGitHubCopilot = false;
     enableLocalScribe = false;
     enableGitConfig = false;
