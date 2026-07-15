@@ -53,6 +53,20 @@
             cat "$out"
           '';
 
+        # Same suite for the Copilot CLI hooks, which reuse the Claude scripts
+        # through payload translation — so both hook trees are deployed.
+        copilot-hooks-selftest = pkgs.runCommand "copilot-hooks-selftest"
+          { nativeBuildInputs = [ pkgs.bash pkgs.jq pkgs.git ]; }
+          ''
+            export HOME="$TMPDIR/home"
+            mkdir -p "$HOME/.claude" "$HOME/.copilot"
+            cp -r ${./claude/hooks} "$HOME/.claude/hooks"
+            cp -r ${./copilot/hooks} "$HOME/.copilot/hooks"
+            chmod -R u+w "$HOME/.claude/hooks" "$HOME/.copilot/hooks"
+            bash "$HOME/.copilot/hooks/test-hook.sh" selftest > "$out"
+            cat "$out"
+          '';
+
         # setup.sh: lint it, then exercise the doctor drift audit against a
         # synthetic Home Manager profile (clean, hand-edited, deleted).
         setup-script = pkgs.runCommand "setup-script"

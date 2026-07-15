@@ -16,6 +16,7 @@ in
     ./git.nix
     ./agents.nix
     ./claude.nix
+    ./copilot.nix
     ./tmux.nix
     ./nvim.nix
     configPath
