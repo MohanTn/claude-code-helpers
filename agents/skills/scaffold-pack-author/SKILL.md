@@ -1,6 +1,6 @@
 ---
 name: scaffold-pack-author
-description: Author an in-tree scaffold-toolkit template pack for the repo you are in — any language, any architecture. Study the repo's recurring pattern, turn one real instance into a versioned pack (Handlebars templates + descriptor + AI_IMPLEMENTATION markers + registry injections + test_data + a real build-check), wire the markers into the existing brownfield files, and point `.scaffold/config.json` at it so the pack lives in the repo's own git tree and the team maintains its coding standards there. Use when the user says "author/create a scaffold pack", "make a pack for this repo", "cut a new pack version", or "wire scaffold into this codebase". This is the producer side; the `scaffold` skill is the consumer side that runs `generate`.
+description: Author an in-tree scaffold-toolkit template pack for the repo you are in — any language, any architecture. Asks whether the repo intends to migrate toward a different target architecture (author a second, additive pack if so) and splits out external/infra packages (cloud SDKs, message brokers, secret managers) into their own packs. Study the repo's recurring pattern, turn one real instance into a versioned pack (Handlebars templates + descriptor + AI_IMPLEMENTATION markers + registry injections + test_data + a real build-check), wire the markers into the existing brownfield files, and point `.scaffold/config.json` at it so the pack lives in the repo's own git tree and the team maintains its coding standards there. Use when the user says "author/create a scaffold pack", "make a pack for this repo", "cut a new pack version", or "wire scaffold into this codebase". This is the producer side; the `scaffold` skill is the consumer side that runs `generate`.
 ---
 
 # scaffold-pack-author — author an in-tree template pack for this repo
@@ -31,7 +31,24 @@ Everywhere below, `scaffold` means "the resolved binary or the `npx` form".
 
 ## Phase 0 — Study the repo (do not guess)
 
-Find the **repeating unit** and, per unit, answer:
+### 0.1 Clarify scope: existing convention only, or a migration pair?
+
+Ask the user directly, before studying any code — do not infer this from the codebase:
+
+> Is the intention to migrate this repo toward a different target architecture over time (e.g. a Clean Architecture / CQRS shape), or should the pack just capture how this repo already does things?
+
+- **No migration intent (the common case)** → author exactly **one** pack from the repo's existing pattern. Continue to 0.2.
+- **Yes, migration intent** → author **two** packs that live side by side in this repo:
+  1. the existing-convention pack (unchanged — features that aren't part of the migration still need it), and
+  2. a second, target-architecture pack (e.g. modeled on `packages/templates-dotnet/v8-controller` in scaffold-toolkit for a CQRS/Clean Architecture target).
+
+  The "pick ONE representative existing file" rule below still applies per pack — a pack can only be derived from a real instance. If the repo has no example of the target shape yet, the user must hand-write one reference feature in that shape first; do not invent the target shape from a generic template.
+
+  Register each under its own stack key in `.scaffold/config.json` (e.g. `backend` and `backend-cqrs`) and run Phases 1-3 once per pack. See "Wire pack-selection routing" in Phase 4 for wiring the guidance that tells the agent which pack to use per feature.
+
+### 0.2 Find the repeating unit(s)
+
+Per pack you're authoring (one, or two if migrating), find the **repeating unit** and answer:
 
 - **What is identical** across every existing instance? → becomes `.hbs` template bodies.
 - **What varies**? (entity/module/component name, route, fields) → becomes `inputs[]` and `{{placeholders}}`.
@@ -40,6 +57,16 @@ Find the **repeating unit** and, per unit, answer:
 - **Comment syntax** of each file extension (`//`, `#`, `<!-- -->`, `--`) → the descriptor's `commentSyntax`, so markers are valid comments in that language.
 
 Pick ONE representative existing file per target as your source of truth. You will parameterize a copy of it, not invent a new shape.
+
+### 0.3 Separate out external/infra packages into their own pack
+
+While studying the repo, also look for recurring usage of an **external SDK or cross-cutting infra concern** — a cloud provider client (GCP Pub/Sub, Secret Manager, IAM/service-account auth), a message broker, a payments SDK, anything wired into multiple features the same way. These do **not** belong inside the main business-logic pack:
+
+- **One-time setup/deployment plumbing** (Dockerfile, CI pipeline, production config, initial client DI wiring) → an additive sibling pack with zero injections, `skip-if-exists` targets, and a single `options` object input for nested config values. Reference shape: `packages/templates-dotnet/v8-controller-gcp` in scaffold-toolkit.
+- **Repeatable in-code usage** (a new Pub/Sub topic + handler, a new Secret-Manager-backed config accessor) → still needs its own `targets` (repeatable, `{{entity}}`-shaped) **and** its own **uniquely-named injection markers** (e.g. `PUBSUB-DI`, never reuse the base pack's `DI` marker) so it can inject into a shared wiring file (like `Program.cs`) without colliding with another pack's injection into the same file.
+- Never hardcode real project IDs, secret names, or service-account emails into a template — they become `inputs`/`options`, the same way `v8-controller-gcp` parameterizes `options.gcp.projectId`.
+
+Each such pack is a full pack in its own right — its own stack key, its own `test_data`, its own `validate-build.mjs` — run Phases 1-3 per pack, same as 0.1's migration pair.
 
 ---
 
@@ -176,6 +203,14 @@ scaffold bootstrap-markers --pack .scaffold/packs/<name> --pack-version v1
 ```
 
 `bootstrap-markers` reads `bootstrapAnchors` to insert `SCAFFOLD:<MARKER>:START/END` into existing wiring files, and records adopted paths in `.scaffold/config.json` so the enforcement hooks gate them exactly like generated files. Read the report channels: `placed`/`alreadyPresent` (done), `pendingGenerate` (the file is a `generate` target, marker arrives on first generate — nothing to do), anything else needs a hand fix or a better anchor.
+
+Repeat the `init`/`bootstrap-markers` pair once per pack if 0.1 or 0.3 produced more than one.
+
+### Wire pack-selection routing into this repo's own instructions file (when more than one pack)
+
+If more than one pack is now registered for this repo, write a short routing section into **this repo's own** agent-instructions file — one line per pack naming the concrete decision rule for when to use it, and an explicit "ambiguous → ask the user" fallback rather than a silent default. Use `CLAUDE.md` if the repo already has one, or `AGENTS.md` if that's the convention this repo/team uses (e.g. for GitHub Copilot). Create the file if the repo has neither.
+
+Never write this routing guidance into a **user-global or personal** instructions file (e.g. `~/.claude/CLAUDE.md`, `~/.agents/AGENTS.md`). Those load for every repo that user touches, most of which won't have these packs registered at all — the routing rule is only meaningful inside this repo.
 
 Then **hand off to the `scaffold` consumer skill** to install the enforcement hooks (Claude Code: merge into `.claude/settings.json`; GitHub Copilot CLI: write `.github/hooks/scaffold-toolkit.json`) and run the first `scaffold generate`.
 
