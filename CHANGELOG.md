@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 
+- Expanded the scaffold-pack-author skill documentation to support two advanced scenarios: authoring multiple packs for architecture migrations (existing + target shapes) and splitting external/infra packages (cloud SDKs, brokers, secret managers) into separate reusable packs. Added Phase 0.1 for scope clarification and Phase 0.3 for external package separation, plus Phase 4 routing guidance for multi-pack repositories.
 - Adds complete Copilot CLI hook infrastructure (9 scripts reusing Claude hooks via payload translation), documents the scaffold-pack-author skill for creating in-tree template packs, wires both into Nix home-manager, and fixes tmux clipboard sync to Wayland. Includes selftest harness to validate hook behavior.
 - Adds Ptyxis terminal font configuration (JetBrainsMono Nerd Font), integrates tmux-nerd-font-window-name plugin for icon-based window naming, and replaces inline zsh prompt with powerlevel10k via zinit plugin manager.
 - Addresses glyph rendering bugs in tmux catppuccin status bar by switching to basic style and adding Nerd Font fallbacks. Removes command duration tracking from zsh prompt and adds zoxide for frecency-based directory jumping.
