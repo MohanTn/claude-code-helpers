@@ -11,12 +11,12 @@
   # because Copilot writes to it at runtime.
   home.file.".copilot/hooks".source = ../copilot/hooks;
 
-  # Live link to the adapter checkout (same role as claude/hooks/scaffold for
+  # Live link to the adapter checkout (same role as .claude/scaffold for
   # Claude Code). mkOutOfStoreSymlink rather than a repo-tracked symlink:
   # home.file dereferences a symlink source into a store snapshot, which would
   # freeze the adapter at switch time instead of following the checkout.
   home.file.".copilot/scaffold".source = config.lib.file.mkOutOfStoreSymlink
-    "/run/media/mohan/M/REPO/scaffold-toolkit/packages/adapter-copilot-cli";
+    "${config.home.homeDirectory}/REPO/scaffold-toolkit/packages/adapter-copilot-cli";
 
   # Expose the tool-agnostic scaffold-pack-author skill to Copilot CLI, which
   # discovers skills as directories under ~/.copilot/skills/ (verified 1.0.70:

@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 
+- Reorganizes scaffold adapter symlinks from `.claude/hooks/scaffold` to `.claude/scaffold`, replaces repo-tracked symlinks with live Nix symlinks, updates hook paths in settings.json, and replaces hardcoded paths with `$HOME`-based variables for cross-system portability
 - Replaces Ptyxis terminal with Alacritty, centralizes system prompts (AGENTS.md) for both Claude and Copilot, adds comprehensive zsh enhancements (history filtering, completion system, fzf-tab, venv auto-activation), improves tmux config (vim-tmux navigation, Alacritty icon fix, clipboard paste), adds Powerlevel10k prompt config to repo for machine consistency, and adds editor plugins (catppuccin theme, vim-tmux-navigator).
 - Expanded the scaffold-pack-author skill documentation to support two advanced scenarios: authoring multiple packs for architecture migrations (existing + target shapes) and splitting external/infra packages (cloud SDKs, brokers, secret managers) into separate reusable packs. Added Phase 0.1 for scope clarification and Phase 0.3 for external package separation, plus Phase 4 routing guidance for multi-pack repositories.
 - Adds complete Copilot CLI hook infrastructure (9 scripts reusing Claude hooks via payload translation), documents the scaffold-pack-author skill for creating in-tree template packs, wires both into Nix home-manager, and fixes tmux clipboard sync to Wayland. Includes selftest harness to validate hook behavior.
