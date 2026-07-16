@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.claude/hooks/scaffold/hooks/user-prompt-submit.mjs\""
+            "command": "node \"$HOME/.claude/scaffold/hooks/user-prompt-submit.mjs\""
           }
         ]
       }
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.claude/hooks/scaffold/hooks/pre-tool-use.mjs\""
+            "command": "node \"$HOME/.claude/scaffold/hooks/pre-tool-use.mjs\""
           },
           {
             "type": "command",
@@ -78,7 +78,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.claude/hooks/scaffold/hooks/post-tool-use.mjs\""
+            "command": "node \"$HOME/.claude/scaffold/hooks/post-tool-use.mjs\""
           }
         ]
       }
@@ -98,7 +98,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.claude/hooks/scaffold/hooks/stop.mjs\""
+            "command": "node \"$HOME/.claude/scaffold/hooks/stop.mjs\""
           }
         ]
       }
