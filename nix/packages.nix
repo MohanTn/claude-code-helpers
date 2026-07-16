@@ -1,7 +1,7 @@
 { pkgs, ... }:
 
 {
-  # lets GTK/Pango apps (e.g. Ptyxis) discover home.packages fonts, including
+  # lets GTK/Pango apps discover home.packages fonts, including
   # the Nerd Font below that tmux's catppuccin status bar and Claude Code
   # icons depend on
   fonts.fontconfig.enable = true;
@@ -22,7 +22,7 @@
     # symbols-only is a dedicated icon fallback: some Powerline glyphs
     # (e.g. U+E0B6) render incorrectly straight out of the patched
     # jetbrains-mono build on this system, so the terminal font is set to
-    # fall back to this font (see nix/README or Ptyxis profile font-name).
+    # fall back to this font (see nix/README or alacritty.nix font.normal.family).
     nerd-fonts.jetbrains-mono
     nerd-fonts.symbols-only
 

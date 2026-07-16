@@ -8,10 +8,49 @@
       cc = "claude --dangerously-skip-permissions";
       repo = "cd $HOME/REPO";
       sl = "$HOME/REPO/quality-worker/sonar_lite.py";
+      ls = "ls --color=auto";
+    };
+
+    history = {
+      size = 50000;
+      save = 50000;
+      path = "$HOME/.zsh_history";
+      append = true;
+      share = true; # already home-manager's default, kept explicit
+      ignoreSpace = true; # skip entries starting with a space; already default
+      ignoreDups = true; # skip immediate repeats; already default
+      ignoreAllDups = true; # drop the older copy when a command repeats non-adjacently
+      saveNoDups = true; # never write duplicate entries to the file
+      expireDuplicatesFirst = true; # trim dups before unique entries once size is exceeded
     };
 
     initContent = ''
       setopt CORRECT
+
+      # Only keep commands that succeeded in $HISTFILE. zshaddhistory fires
+      # before the command runs (exit code isn't known yet), so this stashes
+      # the line there and, in precmd (which runs after execution, once $?
+      # is known), deletes it from the file on failure. It's left in the
+      # in-memory list either way, so Up-arrow/Ctrl-R can still recall a
+      # failed command to fix and retry within the same session; it just
+      # won't persist to disk or sync to other sessions.
+      # Known limitation: a multi-line command spans more than one physical
+      # line in the file, so only its last line gets trimmed on failure.
+      autoload -Uz add-zsh-hook
+
+      __hist_pending_cmd=""
+      _hist_stash_pending() { __hist_pending_cmd=$1; return 0 }
+      add-zsh-hook zshaddhistory _hist_stash_pending
+
+      _hist_drop_failed() {
+        local exit_code=$?
+        if (( exit_code != 0 )) && [[ -n $__hist_pending_cmd ]]; then
+          fc -W
+          sed -i '$ d' "$HISTFILE"
+        fi
+        __hist_pending_cmd=""
+      }
+      add-zsh-hook precmd _hist_drop_failed
 
       # zinit plugin manager: the core script comes from the Nix store (no
       # runtime self-clone); plugins zinit installs still land in the
@@ -20,12 +59,49 @@
       source ${pkgs.zinit}/share/zinit/zinit.zsh
 
       # powerlevel10k prompt, managed as a zinit plugin (git-cloned into
-      # ZINIT[PLUGINS_DIR] on first shell start). No ~/.p10k.zsh is checked
-      # into the repo, so it's machine-local: run `p10k configure` once to
-      # generate it, or the wizard prompts automatically on first launch.
+      # ZINIT[PLUGINS_DIR] on first shell start). Config is checked into the
+      # repo (zsh/p10k.zsh) so the prompt is identical on every machine; run
+      # `p10k configure` to redesign it, then copy ~/.p10k.zsh back here.
       zinit ice depth=1
       zinit light romkatv/powerlevel10k
-      [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+      source ${../zsh/p10k.zsh}
+      # p10k.zsh self-targets wherever it was sourced from for `p10k
+      # configure` to overwrite; that's now a read-only Nix store path, so
+      # repoint it at the writable file `p10k configure` should edit.
+      typeset -g POWERLEVEL9K_CONFIG_FILE=~/.p10k.zsh
+
+      # Extra completion definitions. blockf stops zinit auto-adding the
+      # plugin's fpath entries twice; home-manager's compinit already ran
+      # before this block, so re-run it to pick the new completions up.
+      zinit ice blockf
+      zinit light zsh-users/zsh-completions
+
+      # Case-insensitive completion matching (git ch<TAB> matches "checkout").
+      zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+
+      autoload -Uz compinit && compinit
+
+      # fzf-powered interactive menu for tab completion. Must load right
+      # after compinit but before autosuggestions/syntax-highlighting below,
+      # which wrap zle widgets fzf-tab also needs to hook.
+      zinit light Aloxaf/fzf-tab
+
+      # Preview pane: show the selected directory's contents, for cd and any
+      # other completion whose candidate is a folder.
+      zstyle ':fzf-tab:complete:*:*' fzf-preview '[[ -d $realpath ]] && tree -C -L 2 $realpath'
+
+      # Autosuggestions from history as you type.
+      zinit light zsh-users/zsh-autosuggestions
+
+      # History search forward/backward: type a prefix, then Up/Down cycles
+      # matching history entries instead of the whole list.
+      zinit light zsh-users/zsh-history-substring-search
+      bindkey '^[[A' history-substring-search-up
+      bindkey '^[[B' history-substring-search-down
+
+      # Command syntax highlighting. Must load last: it wraps every other
+      # widget zinit installs above it, per the plugin's own requirement.
+      zinit light zsh-users/zsh-syntax-highlighting
 
       # nvim as editor (plain vim over SSH)
       if [[ -n $SSH_CONNECTION ]]; then
@@ -33,6 +109,41 @@
       else
         export EDITOR='nvim'
       fi
+
+      # Ctrl-X Ctrl-E: edit the current command buffer in $EDITOR, replacing
+      # the line with whatever's saved on exit.
+      autoload -Uz edit-command-line
+      zle -N edit-command-line
+      bindkey '^X^E' edit-command-line
+
+      # Space triggers history expansion (e.g. `!!<space>` -> last command,
+      # `!$<space>` -> last arg) instead of just inserting a literal space.
+      bindkey ' ' magic-space
+
+      # Auto-activate a Python venv (.venv/ or venv/) found directly in the
+      # directory you cd into; deactivate on leaving it, but only if this
+      # hook was the one that activated it, so a venv you sourced by hand
+      # elsewhere is left alone.
+      _auto_activate_venv() {
+        local venv_path=""
+        if [[ -f .venv/bin/activate ]]; then
+          venv_path="$PWD/.venv"
+        elif [[ -f venv/bin/activate ]]; then
+          venv_path="$PWD/venv"
+        fi
+
+        if [[ -n $venv_path ]]; then
+          if [[ "$VIRTUAL_ENV" != "$venv_path" ]]; then
+            source "$venv_path/bin/activate"
+            __auto_venv=1
+          fi
+        elif [[ -n $VIRTUAL_ENV && -n $__auto_venv ]]; then
+          deactivate
+          unset __auto_venv
+        fi
+      }
+      add-zsh-hook chpwd _auto_activate_venv
+      _auto_activate_venv
 
       # Legacy per-machine installs, kept working where they exist.
       # Fresh machines get dotnet and node from Nix instead.
@@ -47,6 +158,10 @@
       # background; override to a brighter cyan, keep everything else default.
       command -v dircolors >/dev/null 2>&1 && eval "$(dircolors -b)"
       export LS_COLORS="''${LS_COLORS}:di=01;36"
+
+      # Color the completion menu (file/dir listings, e.g. `ls <TAB>`) the
+      # same way `ls --color` does, using the LS_COLORS set above.
+      zstyle ':completion:*' list-colors "''${(s.:.)LS_COLORS}"
 
       # `axi` wrapper for chrome-devtools-axi: uses Google Chrome when
       # installed (setup.sh handles that on apt machines), otherwise starts a

@@ -5,4 +5,6 @@
 
 ---@module 'lazy'
 ---@type LazySpec
-return {}
+return {
+  'christoomey/vim-tmux-navigator',
+}

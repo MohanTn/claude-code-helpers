@@ -12,7 +12,7 @@ in
     ./optional-packages.nix
     ./maintenance.nix
     ./zsh.nix
-    ./ptyxis.nix
+    ./alacritty.nix
     ./git.nix
     ./agents.nix
     ./claude.nix
