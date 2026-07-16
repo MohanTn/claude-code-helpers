@@ -26,6 +26,9 @@
   # restarting zsh. Edit ~/.p10k.zsh and type `source ~/.p10k.zsh`.
   unset -m '(POWERLEVEL9K_*|DEFAULT_USER)~POWERLEVEL9K_GITSTATUS_DIR'
 
+  # Force synchronous git status (no caching) to always show current state.
+  typeset -g POWERLEVEL9K_GITSTATUS_ENABLE_ASYNC=false
+
   # Zsh >= 5.1 is required.
   [[ $ZSH_VERSION == (5.<1->*|<6->.*) ]] || return
 
