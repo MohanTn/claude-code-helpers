@@ -837,6 +837,19 @@ require('lazy').setup({
     end,
   },
 
+  {
+    -- Installed but not active (tokyonight-night above is what loads on
+    -- startup). Matches tmux's catppuccin mocha flavour (nix/tmux.nix) —
+    -- run `:colorscheme catppuccin-mocha` to switch to it for the session.
+    'catppuccin/catppuccin',
+    name = 'catppuccin',
+    lazy = true,
+    priority = 1000,
+    opts = {
+      flavour = 'mocha',
+    },
+  },
+
   -- Highlight todo, notes, etc in comments
   {
     'folke/todo-comments.nvim',

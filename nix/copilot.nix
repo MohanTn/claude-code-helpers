@@ -26,4 +26,13 @@
   # Claude-artifact-specific skills (arch, featurePlan) it cannot render.
   home.file.".copilot/skills/scaffold-pack-author".source =
     ../agents/skills/scaffold-pack-author;
+
+  # Copilot CLI has no @-import directive (unlike claude/CLAUDE.md's
+  # `@~/.agents/AGENTS.md`), so the global instructions are generated at
+  # eval time from the same source instead of hand-duplicated: this reads
+  # agents/AGENTS.md into the store file's content, so agents/AGENTS.md
+  # stays the single authored system prompt and copilot-instructions.md is
+  # never edited directly.
+  home.file.".copilot/copilot-instructions.md".text =
+    builtins.readFile ../agents/AGENTS.md;
 }
