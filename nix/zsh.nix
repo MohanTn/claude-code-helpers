@@ -58,17 +58,14 @@
       # aren't part of this repo's declarative config.
       source ${pkgs.zinit}/share/zinit/zinit.zsh
 
-      # powerlevel10k prompt, managed as a zinit plugin (git-cloned into
-      # ZINIT[PLUGINS_DIR] on first shell start). Config is checked into the
-      # repo (zsh/p10k.zsh) so the prompt is identical on every machine; run
-      # `p10k configure` to redesign it, then copy ~/.p10k.zsh back here.
-      zinit ice depth=1
-      zinit light romkatv/powerlevel10k
-      source ${../zsh/p10k.zsh}
-      # p10k.zsh self-targets wherever it was sourced from for `p10k
-      # configure` to overwrite; that's now a read-only Nix store path, so
-      # repoint it at the writable file `p10k configure` should edit.
-      typeset -g POWERLEVEL9K_CONFIG_FILE=~/.p10k.zsh
+      # oh-my-posh prompt, based on its bundled Catppuccin Mocha theme
+      # (matches tmux's @catppuccin_flavor in nix/tmux.nix and nvim's
+      # colorscheme). Vendored locally, rather than read straight from the
+      # Nix store copy, to add a right-aligned execution-time segment and a
+      # transient prompt (collapses to just the closer glyph once a command
+      # is submitted, keeping a dotted divider + last execution time on the
+      # right, like p10k's transient prompt).
+      eval "$(oh-my-posh init zsh --config ${../zsh/oh-my-posh-catppuccin-mocha.omp.json})"
 
       # Extra completion definitions. blockf stops zinit auto-adding the
       # plugin's fpath entries twice; home-manager's compinit already ran

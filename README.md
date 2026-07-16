@@ -11,7 +11,7 @@ agents/       ~/.agents (tool-agnostic layer: AGENTS.md global instructions
               scaffold-pack-author skill is additionally linked to
               ~/.copilot/skills so both agents discover it)
 claude/       ~/.claude/{settings.json,CLAUDE.md,hooks,statusline-usage.py}
-zsh/          prompt.zsh: custom async prompt sourced by nix/zsh.nix
+zsh/          chrome-devtools-axi.zsh: axi wrapper sourced by nix/zsh.nix
 nvim/         ~/.config/nvim (LazyVim)
 setup.sh      single entry point: setup, apply/update, drift audit, input upgrade
 setup-packages.sh  interactive picker for optional packages (Docker, Python, etc.)
@@ -61,15 +61,9 @@ To add a new non-secret environment variable for good, add it to the `home.sessi
 
 ### Prompt
 
-`zsh/prompt.zsh` (sourced by `nix/zsh.nix`) is a from-scratch "phosphor CRT" prompt, not an oh-my-zsh theme: green-on-black, styled after old monochrome monitors, with a modern hint.
+The zsh prompt is [oh-my-posh](https://ohmyposh.dev/), using its bundled `catppuccin_mocha.omp.json` theme (`nix/zsh.nix`) — matches tmux's `@catppuccin_flavor "mocha"` (`nix/tmux.nix`) and nvim's colorscheme.
 
-* Shows the full working directory and git branch: 🌿 clean, 🔥 dirty, `↑N`/`↓N` for commits ahead/behind of upstream (pending push/pull). Git status is computed in a background job via zsh's `zle -F`, so a slow `git status` in a large repo never blocks typing; while it's pending, a spinner (`⠋⠙⠹...`) animates in its place, one frame per second (only actually visible in slow/large repos, since fast ones resolve before the first tick).
-* `RPROMPT` shows ✅/❌ based on the last command's exit status, plus `⏱ Ns` if it ran 3 seconds or longer.
-* The clock lives in the terminal's own window/tab title (updated every prompt) instead of repeating on every line.
-* Each field gets its own step on the same green phosphor ladder (user@host, separators, path, branch) rather than one flat shade, so the line stays scannable without leaving the monochrome palette; emoji are the one deliberate "modern" touch, since a real CRT never had color.
-* Opening a new interactive terminal prints a one-line typewriter-animated greeting.
-
-Edit `zsh/prompt.zsh` directly (plain zsh, no Nix escaping needed) and re-run `./setup.sh` to change it.
+The theme file ships inside the pinned `oh-my-posh` Nix package itself, so it's reproducible across machines without vendoring a copy into this repo. To use a different bundled theme or flavor, point `--config` in `nix/zsh.nix` at another file under `${pkgs.oh-my-posh}/share/oh-my-posh/themes/` and re-run `./setup.sh`.
 ### Not managed by Nix (by design)
 
 * **Claude Code, pi, and the other npm CLIs** (`pipeline-worker`, `gemini-cli`, `freebuff`, `mcp-sonar-analysis`, `@github/copilot`): these self-update and move fast, so activation bootstraps them via their native installers only when missing (claude to `~/.local/bin`, npm globals to `~/.npm-global`).

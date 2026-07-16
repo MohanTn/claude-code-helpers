@@ -17,6 +17,7 @@
     gcc # Treesitter parser builds
     gnumake
     curl
+    oh-my-posh # zsh prompt, catppuccin_mocha theme (nix/zsh.nix)
 
     # Nerd Font glyphs for tmux (catppuccin status bar) and terminal icons.
     # symbols-only is a dedicated icon fallback: some Powerline glyphs

@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 
+- Replaces powerlevel10k with oh-my-posh for the zsh prompt, using its bundled `catppuccin_mocha.omp.json` theme to match tmux's and nvim's existing Catppuccin Mocha flavor. Removes the vendored `zsh/p10k.zsh` config (1748 lines) since the theme now ships inside the pinned `oh-my-posh` Nix package instead of needing to be checked into the repo.
 - Reorganizes scaffold adapter symlinks from `.claude/hooks/scaffold` to `.claude/scaffold`, replaces repo-tracked symlinks with live Nix symlinks, updates hook paths in settings.json, and replaces hardcoded paths with `$HOME`-based variables for cross-system portability
 - Replaces Ptyxis terminal with Alacritty, centralizes system prompts (AGENTS.md) for both Claude and Copilot, adds comprehensive zsh enhancements (history filtering, completion system, fzf-tab, venv auto-activation), improves tmux config (vim-tmux navigation, Alacritty icon fix, clipboard paste), adds Powerlevel10k prompt config to repo for machine consistency, and adds editor plugins (catppuccin theme, vim-tmux-navigator).
 - Expanded the scaffold-pack-author skill documentation to support two advanced scenarios: authoring multiple packs for architecture migrations (existing + target shapes) and splitting external/infra packages (cloud SDKs, brokers, secret managers) into separate reusable packs. Added Phase 0.1 for scope clarification and Phase 0.3 for external package separation, plus Phase 4 routing guidance for multi-pack repositories.
