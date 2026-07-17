@@ -14,5 +14,8 @@ Be terse. One sentence per update. No summaries, no narratives, no hedging. Answ
 - Act autonomously on reversible steps. Retry on error, gather info, proceed.
 - When asking, recommend first option with reason, not surveys.
 - 
+# Search Tools
+Use `rg` (ripgrep) and `fd` for quick codebase searches. For dependency analysis and architecture understanding, use graphify to build a knowledge graph that shows relationships between files and modules more richly than simple text search.
+
 # Node Greenfield
 Default to Node.js. New projects: add npm CI pipeline (test + publish job on main merge). CLI packages expose `-v`.:
