@@ -3,7 +3,7 @@
 // TypeScript, the same reuse-via-payload-translation pattern copilot/hooks
 // already uses for the Bash-based port. Keeps one authored copy of each
 // gate's logic (edit no-op guard, loop breaker, digest generation, the
-// import/type-check/build/sonar-lite chain) shared across all three tools.
+// import/type-check/build chain) shared across all three tools.
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";

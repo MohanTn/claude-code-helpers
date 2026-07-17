@@ -25,7 +25,7 @@ declare -A HOOK_INFO=(
   [pre-tool-use-edit-guard.sh]="PreToolUse (Edit/Write)::block no-op edits/writes"
   [pre-tool-use-goal-capture.sh]="PreToolUse (*)::capture the stated GOAL: line from the transcript"
   [pre-tool-use-loop-breaker.sh]="PreToolUse (*)::block 3rd consecutive identical tool call"
-  [post-tool-use-edit.sh]="PostToolUse (Edit/Write)::import/type-check/build/sonar-lite gate after edits"
+  [post-tool-use-edit.sh]="PostToolUse (Edit/Write)::import/type-check/build gate after edits"
   [stop-goal-check.sh]="Stop::block stop until GOAL_CHECK: was stated"
   [session-end-cleanup.sh]="SessionEnd::prune stale hook state"
 )

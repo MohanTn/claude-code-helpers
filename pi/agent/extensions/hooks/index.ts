@@ -1,6 +1,6 @@
 // TypeScript port of claude/hooks for the Pi coding agent. Gates whose logic
 // doesn't depend on Pi's tool-input shape (loop breaker, digest generation,
-// the post-edit import/type-check/build/sonar-lite chain, session cleanup)
+// the post-edit import/type-check/build chain, session cleanup)
 // shell out to the existing claude/hooks/*.sh scripts via lib.ts's
 // runClaudeHook, the same reuse pattern copilot/hooks uses. Two gates are
 // reimplemented natively instead of shelled out, because Pi's tool/event

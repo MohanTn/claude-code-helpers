@@ -7,7 +7,6 @@
     shellAliases = {
       cc = "claude";
       repo = "cd $HOME/REPO";
-      sl = "$HOME/REPO/quality-worker/sonar_lite.py";
       ls = "ls --color=auto";
     };
 

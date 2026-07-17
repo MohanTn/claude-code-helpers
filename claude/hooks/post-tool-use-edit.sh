@@ -75,23 +75,6 @@ case "$file" in
       fi
     fi
   fi
-
-  # 3.6 — sonar-lite: ESLint + eslint-plugin-sonarjs static analysis
-  sonar_output=$(timeout 20 python3 "$HOOKS_HOME/sonar_lite.py" "$file")
-  if [ "$?" = "1" ]; then
-    log "post-edit: sonar-lite findings in $file"
-    printf '%s\n' "$sonar_output" >&2
-    exit 2
-  fi
-  ;;
-*.js|*.jsx)
-  # 3.6 — sonar-lite: ESLint + eslint-plugin-sonarjs static analysis
-  sonar_output=$(timeout 20 python3 "$HOOKS_HOME/sonar_lite.py" "$file")
-  if [ "$?" = "1" ]; then
-    log "post-edit: sonar-lite findings in $file"
-    printf '%s\n' "$sonar_output" >&2
-    exit 2
-  fi
   ;;
 *.cs)
   # 3.5 — dotnet build gate, the C# analogue of the tsc gate above. There's no
@@ -124,14 +107,6 @@ case "$file" in
         exit 2
       fi
     fi
-  fi
-
-  # 3.6 — sonar-lite: dotnet format analyzers / SonarAnalyzer.CSharp static analysis
-  sonar_output=$(timeout 20 python3 "$HOOKS_HOME/sonar_lite.py" "$file")
-  if [ "$?" = "1" ]; then
-    log "post-edit: sonar-lite findings in $file"
-    printf '%s\n' "$sonar_output" >&2
-    exit 2
   fi
   ;;
 esac

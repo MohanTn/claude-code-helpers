@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# postToolUse — import/type-check/build/sonar gate after file edits, reusing
+# postToolUse — import/type-check/build gate after file edits, reusing
 # the Claude Code post-tool-use-edit.sh. Copilot's postToolUse cannot block a
 # write that already happened (neither can Claude's), but it can append
 # additionalContext to the tool result — the gate's findings arrive there.
