@@ -19,6 +19,14 @@ services:
       dockerfile: docker/Dockerfile
       target: claude
     command: ["claude", "--dangerously-skip-permissions"]
+    # Passes a host-side corporate/proxy CA bundle (CURL_CA_BUNDLE, if set)
+    # into the container so entrypoint.sh's self-heal `curl` can verify TLS
+    # on networks that SSL-inspect. The volume line falls back to a
+    # /dev/null:/dev/null no-op bind when the var is unset, since Compose
+    # needs a real source path either way.
+    environment:
+      - CURL_CA_BUNDLE
+      - NODE_EXTRA_CA_CERTS=${CURL_CA_BUNDLE:-}
     volumes:
       - ${REPO_PATH:-.}:/workspace
       # Whole $HOME, not just $HOME/.claude: Claude Code's OAuth/onboarding
@@ -26,6 +34,7 @@ services:
       # narrower mount would silently drop on every `--rm` recreation,
       # forcing a fresh login each launch.
       - claude-agent-home:/root
+      - ${CURL_CA_BUNDLE:-/dev/null}:${CURL_CA_BUNDLE:-/dev/null}:ro
     working_dir: /workspace
     user: root
     stdin_open: true
