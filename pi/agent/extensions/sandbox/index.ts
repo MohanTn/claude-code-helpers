@@ -49,7 +49,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type BashOperations, CONFIG_DIR_NAME, createBashTool, getAgentDir } from "@earendil-works/pi-coding-agent";
 
 interface SandboxConfig extends SandboxRuntimeConfig {
-	enabled?: boolean;
+  enabled?: boolean;
 }
 
 const DEFAULT_CONFIG: SandboxConfig = {
@@ -76,6 +76,22 @@ const DEFAULT_CONFIG: SandboxConfig = {
 	},
 };
 
+function containsGlobChars(pattern: string): boolean {
+	return /[*?[\]]/.test(pattern);
+}
+
+// @anthropic-ai/sandbox-runtime's bwrap wrapper (Linux) passes denyWrite
+// patterns straight through as literal paths instead of expanding them as
+// globs - so "*.pem" doesn't protect real .pem files, it bind-mounts
+// /dev/null at a path literally named "*.pem" inside every sandboxed repo.
+// macOS's sandbox-exec profile expands these globs natively, so only strip
+// them on Linux, where they're dead weight that just clutters `ls`/`git
+// status` output from the sandboxed bash tool.
+function stripIneffectiveLinuxGlobs(patterns: string[]): string[] {
+	if (process.platform !== "linux") return patterns;
+	return patterns.filter((p) => !containsGlobChars(p));
+}
+
 function loadConfig(cwd: string): SandboxConfig {
 	const projectConfigPath = join(cwd, CONFIG_DIR_NAME, "sandbox.json");
 	const globalConfigPath = join(getAgentDir(), "extensions", "sandbox.json");
@@ -99,7 +115,11 @@ function loadConfig(cwd: string): SandboxConfig {
 		}
 	}
 
-	return deepMerge(deepMerge(DEFAULT_CONFIG, globalConfig), projectConfig);
+	const merged = deepMerge(deepMerge(DEFAULT_CONFIG, globalConfig), projectConfig);
+	if (merged.filesystem?.denyWrite) {
+		merged.filesystem.denyWrite = stripIneffectiveLinuxGlobs(merged.filesystem.denyWrite);
+	}
+	return merged;
 }
 
 function deepMerge(base: SandboxConfig, overrides: Partial<SandboxConfig>): SandboxConfig {

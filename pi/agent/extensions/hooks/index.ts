@@ -23,11 +23,14 @@
 //   once, only when Pi will not continue automatically (no retry/compaction/
 //   follow-up left) — the closest match to Claude Code's Stop hook timing.
 //
-// Known gap: Claude Code's Stop hook can block the turn from ending (exit 2)
-// until a GOAL_CHECK: line appears. Pi's documented extension API has no
-// confirmed way to force a turn to continue from agent_settled, so the check
-// below only warns via ctx.ui.notify — it does not gate completion. Revisit
-// if Pi adds a blocking return value for agent_settled.
+// Enforcement: mirrors Claude Code's Stop hook (exit 2 blocks the turn until
+// a GOAL_CHECK: line appears) by forcing a follow-up turn via
+// pi.sendUserMessage(..., { deliverAs: "followUp" }) — documented in
+// extensions.md as triggering a new turn when not streaming — the first time
+// a stated GOAL: goes unchecked at agent_settled. Only forces once per goal
+// (see goalCheckForced below) to avoid looping forever if the model never
+// complies, matching stop-goal-check.sh's stop_hook_active guard.
+import { randomUUID } from "node:crypto";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { findUncheckedGoal, runClaudeHook, toClaudeToolName } from "./lib.js";
 
@@ -42,13 +45,15 @@ interface WriteInput {
 }
 
 export default function (pi: ExtensionAPI) {
-  let sessionId = crypto.randomUUID();
+  let sessionId = randomUUID();
   let digest = "";
   let digestInjected = false;
+  let goalCheckForced = false;
 
   pi.on("session_start", async (event, ctx) => {
     sessionId = crypto.randomUUID();
     digestInjected = false;
+    goalCheckForced = false;
 
     const result = runClaudeHook("session-start.sh", {
       session_id: sessionId,
@@ -145,12 +150,23 @@ export default function (pi: ExtensionAPI) {
   // turn_end, and its enforcement gap vs. the Claude version).
   pi.on("agent_settled", async (_event, ctx) => {
     const goal = findUncheckedGoal(ctx.sessionManager.getEntries());
-    if (!goal) return;
+    if (!goal) {
+      goalCheckForced = false;
+      return;
+    }
 
-    ctx.ui?.notify?.(
-      `Goal stated earlier ("${goal}") was never checked off with GOAL_CHECK: this turn.`,
-      "warning",
-    );
+    const reminder = `You stated this goal earlier: "${goal}". Before finishing, explicitly verify it — state 'GOAL_CHECK: ACHIEVED' or 'GOAL_CHECK: NOT_ACHIEVED — <reason>' and address any gap before stopping.`;
+
+    if (goalCheckForced) {
+      // Already forced one follow-up for this goal and it's still unchecked —
+      // don't loop forever, just warn like the Claude-side loop guard does.
+      ctx.ui?.notify?.(`Goal check still missing after follow-up: ${reminder}`, "warning");
+      goalCheckForced = false;
+      return;
+    }
+
+    goalCheckForced = true;
+    pi.sendUserMessage(reminder, { deliverAs: "followUp" });
   });
 
   pi.on("session_shutdown", async () => {
