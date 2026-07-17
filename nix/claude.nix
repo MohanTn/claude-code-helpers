@@ -16,7 +16,7 @@
   # inside it, since .claude/hooks is itself a whole-directory store symlink
   # and can't also host an independently-managed child symlink.
   home.file.".claude/scaffold".source = config.lib.file.mkOutOfStoreSymlink
-    "${config.home.homeDirectory}/REPO/scaffold-toolkit/packages/adapter-claude-code";
+    "${config.home.homeDirectory}/REPO/scaffold-toolkit";
 
   # settings.json is the one config file Claude Code itself edits at runtime
   # (permission grants, /config), so it is deployed as a writable copy that
