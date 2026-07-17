@@ -124,18 +124,6 @@
   "theme": "dark",
   "model": "claude-fable-5[1m]",
   "sandbox": {
-    "enabled": true,
-    "credentials": {
-      "files": [
-        { "path": "~/.aws/credentials", "mode": "deny" },
-        { "path": "~/.ssh", "mode": "deny" },
-        { "path": "~/.config/gh/hosts.yml", "mode": "deny" }
-      ],
-      "envVars": [
-        { "name": "GITHUB_TOKEN", "mode": "deny" },
-        { "name": "NPM_TOKEN", "mode": "deny" }
-      ]
-    },
-    "excludedCommands": ["docker *"]
+    "enabled": false
   }
 }

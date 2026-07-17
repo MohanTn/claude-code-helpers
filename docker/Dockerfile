@@ -38,14 +38,14 @@ USER agent
 
 # ---- claude ----
 FROM base AS claude
-# Run as `agent`, not root: the installer's own `claude install` step puts
-# the binary at $HOME/.local/bin/claude, matching claude.nix's host-side
-# bootstrap check. Its install.sh only takes an optional stable/latest/
-# VERSION positional arg, not a --install-dir flag.
+USER root
+# Run as `root` for full permissions inside the container. The installer's
+# own `claude install` step will put the binary in root's $HOME/.local/bin.
+ENV HOME=/root
 RUN curl -fsSL https://claude.ai/install.sh | bash
-ENV PATH="/home/agent/.local/bin:${PATH}"
-COPY --chown=agent:agent claude/hooks /opt/agent-config/claude/hooks
-COPY --chown=agent:agent claude/statusline-usage.py /opt/agent-config/claude/statusline-usage.py
+ENV PATH="/root/.local/bin:${PATH}"
+COPY --chown=root:root claude/hooks /opt/agent-config/claude/hooks
+COPY --chown=root:root claude/statusline-usage.py /opt/agent-config/claude/statusline-usage.py
 # scaffold-toolkit hooks reference a live host checkout (~/REPO/scaffold-toolkit)
 # that isn't mounted into the container, so they're stripped rather than
 # copied verbatim — Claude Code hooks fail open on a missing script (shown
@@ -53,11 +53,10 @@ COPY --chown=agent:agent claude/statusline-usage.py /opt/agent-config/claude/sta
 # ship a hook that can only ever error in this environment. RUN executes
 # against the image filesystem, not the build context, so the source file
 # has to be COPY'd in before jq can read it.
-COPY --chown=agent:agent claude/settings.json /tmp/claude-settings.json
+COPY --chown=root:root claude/settings.json /tmp/claude-settings.json
 RUN jq 'del(.hooks.UserPromptSubmit[1], .hooks.PreToolUse[0].hooks[0], .hooks.PostToolUse[1], .hooks.Stop[1])' \
     /tmp/claude-settings.json > /opt/agent-config/claude/settings.json \
     && rm /tmp/claude-settings.json
-USER agent
 ENV AGENT_TOOL=claude
 ENTRYPOINT ["/opt/agent-config/entrypoint.sh"]
 CMD ["claude"]
@@ -65,23 +64,19 @@ CMD ["claude"]
 # ---- copilot ----
 FROM base AS copilot
 USER root
-# HOME stays /home/agent across the USER switch (ENV isn't user-scoped in
-# Docker), so an npm install run as root here writes a root-owned cache
-# under the agent user's home — chown it back or any later npm invocation
-# as `agent` (in this stage or a future change) fails with EACCES on it,
-# same bug the pi stage's own extra `npm install --prefix ...` step hit.
+# Run as `root` for full permissions inside the container.
+ENV HOME=/root
 RUN npm install --global @github/copilot \
-    && chown -R agent:agent /home/agent/.npm 2>/dev/null || true
-COPY --chown=agent:agent copilot/hooks/lib /opt/agent-config/copilot/hooks/lib
-COPY --chown=agent:agent copilot/hooks/mohan-hooks.json /opt/agent-config/copilot/hooks/mohan-hooks.json
-COPY --chown=agent:agent copilot/hooks/session-start.sh copilot/hooks/user-prompt-submit.sh \
+    && chown -R root:root /root/.npm 2>/dev/null || true
+COPY --chown=root:root copilot/hooks/lib /opt/agent-config/copilot/hooks/lib
+COPY --chown=root:root copilot/hooks/mohan-hooks.json /opt/agent-config/copilot/hooks/mohan-hooks.json
+COPY --chown=root:root copilot/hooks/session-start.sh copilot/hooks/user-prompt-submit.sh \
      copilot/hooks/pre-tool-use.sh copilot/hooks/post-tool-use.sh copilot/hooks/agent-stop.sh \
      copilot/hooks/session-end-cleanup.sh /opt/agent-config/copilot/hooks/
 # copilot/hooks reuses claude/hooks scripts via CLAUDE_HOOKS_HOME (see
 # copilot/hooks/lib/common.sh) — those need to exist here too, independent
 # of whether the claude stage is ever built.
-COPY --chown=agent:agent claude/hooks /opt/agent-config/claude/hooks
-USER agent
+COPY --chown=root:root claude/hooks /opt/agent-config/claude/hooks
 ENV AGENT_TOOL=copilot
 ENTRYPOINT ["/opt/agent-config/entrypoint.sh"]
 CMD ["copilot"]
@@ -89,17 +84,15 @@ CMD ["copilot"]
 # ---- pi ----
 FROM base AS pi
 USER root
-# Same root-writes-into-agent's-$HOME cache issue as the copilot stage; here
-# it's not just latent — the later `npm install --prefix` as `agent` in this
-# same stage genuinely fails EACCES on the root-owned cache without this.
+# Run as `root` for full permissions inside the container.
+ENV HOME=/root
 RUN npm install --global --ignore-scripts @earendil-works/pi-coding-agent \
-    && chown -R agent:agent /home/agent/.npm 2>/dev/null || true
-COPY --chown=agent:agent pi/agent/extensions/hooks /opt/agent-config/pi/extensions/hooks
-COPY --chown=agent:agent pi/agent/extensions/sandbox /opt/agent-config/pi/extensions/sandbox
+    && chown -R root:root /root/.npm 2>/dev/null || true
+COPY --chown=root:root pi/agent/extensions/hooks /opt/agent-config/pi/extensions/hooks
+COPY --chown=root:root pi/agent/extensions/sandbox /opt/agent-config/pi/extensions/sandbox
 # claude/hooks reused by pi/agent/extensions/hooks/lib.ts (see its
 # runClaudeHook helper), same cross-reference as the copilot stage above.
-COPY --chown=agent:agent claude/hooks /opt/agent-config/claude/hooks
-USER agent
+COPY --chown=root:root claude/hooks /opt/agent-config/claude/hooks
 # Bake the sandbox extension's npm deps at build time so entrypoint.sh only
 # has to copy a directory, not run npm install (and therefore need network)
 # on every container start.

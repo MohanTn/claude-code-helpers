@@ -4,7 +4,7 @@
 Renders one compact line at the bottom of the Claude Code CLI, matching the
 exact numbers shown by the `/usage` command:
 
-    claude-opus-4-8 │ ctx ███░░░░░ 63k/200k │ 5h ██████░░ 72% ⟳1h12m │ wk ████████ 80%
+    claude-opus-4-8 │ ctx ███░░░░░ 63k/200k │ 5h ██████░░ 72% 1h12m │ dir workspace
 
 Data sources (all read-only):
   * model   -> stdin JSON  (model.display_name)                      [from CLI]
@@ -53,14 +53,14 @@ OAUTH_BETA = "oauth-2025-04-20"
 BAR_WIDTH = 8
 TAIL_BYTES = 256 * 1024  # bytes read from the tail of the active transcript
 
-# Truecolor palette (matches the approved mock: coral accent, traffic-light bars)
-C_RESET = "\033[0m"
-C_CORAL = "\033[38;2;217;119;87m"   # #d97757
-C_OK = "\033[38;2;108;174;117m"     # #6cae75
-C_WARN = "\033[38;2;230;179;77m"    # #e6b34d
-C_DANGER = "\033[38;2;224;108;90m"  # #e06c5a
-C_MUTED = "\033[38;2;138;132;122m"  # #8a847a
-C_TRACK = "\033[38;2;52;50;46m"     # #34322e (empty bar cells)
+# Plain style: no colors, default terminal foreground everywhere.
+C_RESET = ""
+C_CORAL = ""
+C_OK = ""
+C_WARN = ""
+C_DANGER = ""
+C_MUTED = ""
+C_TRACK = ""
 
 FILL_CHAR = "█"
 EMPTY_CHAR = "░"
@@ -109,7 +109,8 @@ def unavailable(label: str) -> str:
 
 
 def reset_countdown(iso: str | None) -> str:
-    """Compact 'time until reset' from an ISO-8601 instant, e.g. '1h12m' / '4m'."""
+    """Compact 'time until reset' from an ISO-8601 instant, e.g. '1h12m' / '4m'.
+    Shown as plain text (no ⟳ glyph, which overlaps the time in some fonts)."""
     if not iso:
         return ""
     try:
@@ -244,7 +245,7 @@ def _window_segment(label: str, window: dict | None) -> str:
         return unavailable(label)
     pct = float(window["utilization"])
     countdown = reset_countdown(window.get("resets_at"))
-    value = f"{pct:.0f}%" + (f" {C_MUTED}⟳{countdown}{C_RESET}" if countdown else "")
+    value = f"{pct:.0f}%" + (f" {countdown}" if countdown else "")
     return segment(label, pct, value, usage_color(pct))
 
 
@@ -263,11 +264,10 @@ def build_status(payload: dict) -> str:
 
     usage = get_usage() or {}
     h5_seg = _window_segment("5h", usage.get("five_hour"))
-    wk_seg = _window_segment("wk", usage.get("seven_day"))
 
     dir_seg = f"{C_MUTED}dir {C_RESET}{C_CORAL}{cwd_folder(payload)}{C_RESET}"
 
-    return f" {C_CORAL}{model}{C_RESET} {SEP} {ctx_seg} {SEP} {h5_seg} {SEP} {wk_seg} {SEP} {dir_seg}"
+    return f" {C_CORAL}{model}{C_RESET} {SEP} {ctx_seg} {SEP} {h5_seg} {SEP} {dir_seg}"
 
 
 def main() -> None:

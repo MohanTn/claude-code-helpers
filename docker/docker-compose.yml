@@ -18,10 +18,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
       target: claude
+    command: ["claude", "--dangerously-skip-permissions"]
     volumes:
       - ${REPO_PATH:-.}:/workspace
-      - claude-agent-home:/home/agent/.claude
+      - claude-agent-home:/root/.claude
     working_dir: /workspace
+    user: root
     stdin_open: true
     tty: true
 
@@ -30,10 +32,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
       target: copilot
+    command: ["copilot", "--yolo"]
     volumes:
       - ${REPO_PATH:-.}:/workspace
-      - copilot-agent-home:/home/agent/.copilot
+      - copilot-agent-home:/root/.copilot
     working_dir: /workspace
+    user: root
     stdin_open: true
     tty: true
 
@@ -44,8 +48,9 @@ services:
       target: pi
     volumes:
       - ${REPO_PATH:-.}:/workspace
-      - pi-agent-home:/home/agent/.pi
+      - pi-agent-home:/root/.pi
     working_dir: /workspace
+    user: root
     stdin_open: true
     tty: true
 
