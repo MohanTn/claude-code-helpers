@@ -44,6 +44,11 @@ USER root
 ENV HOME=/root
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"
+# Claude Code refuses --dangerously-skip-permissions as root/sudo unless it
+# knows it's already sandboxed (undocumented escape hatch, confirmed via
+# anthropics/claude-code#9184) — true here since the container itself is the
+# sandbox and only /workspace is mounted in.
+ENV IS_SANDBOX=1
 COPY --chown=root:root claude/hooks /opt/agent-config/claude/hooks
 COPY --chown=root:root claude/statusline-usage.py /opt/agent-config/claude/statusline-usage.py
 # scaffold-toolkit hooks reference a live host checkout (~/REPO/scaffold-toolkit)
