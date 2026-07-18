@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse: Edit|Write — deterministic enforcement of the boilerplate mandate
 # (agents/boilerplats/AGENT-HINT.md) on boilerplate-shaped files
-# (controller/repository/handler/validator/factory/mapper).
+# (controller/repository/handler/validator/factory/mapper/query/command/request/response).
 #   Write: a new (or empty) file must carry the generator's scaffold:inject
 #     marker, and overwriting a marked file must keep the marker.
 #   Edit: removing the scaffold:inject marker is blocked, so the file stays
@@ -14,7 +14,7 @@ source "$HOME/.claude/hooks/lib/common.sh"
 
 file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [ -n "$file" ] || exit 0
-printf '%s' "$file" | grep -qiE '(controller|repository|handler|validator|factory|mapper)\.(cs|ts|js|py)$' || exit 0
+printf '%s' "$file" | grep -qiE '(controller|repository|handler|validator|factory|mapper|query|command|request|response)\.(cs|ts|js|py)$' || exit 0
 
 marker='scaffold:inject'
 
@@ -51,6 +51,6 @@ printf '%s' "$content" | grep -q "$marker" && exit 0
 deny "blocked hand-written file" \
 "Blocked: boilerplate files must be created with the generator, not hand-written.
 Create the shell first:
-  node ~/.agents/boilerplats/scaffold.js --lang <csharp|typescript|javascript|python> --template <controller|repository|handler|validator|factory|mapper> --out <path> --data '<json>'
+  node ~/.agents/boilerplats/scaffold.js --lang <csharp|typescript|javascript|python> --template <controller|repository|handler|validator|factory|mapper|query|commands|request|response> --out <path> --data '<json>'
 then fill in the logic with Edit above the scaffold:inject marker. To add a member to an existing scaffold-marked file, use --inject --template member.
 See ~/.agents/boilerplats/AGENT-HINT.md for template data fields."

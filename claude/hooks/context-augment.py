@@ -357,10 +357,6 @@ def main() -> int:
         return 0
 
     parts = ["<context-augmentation>"]
-    parts.append(
-        '<legend>mode=full: complete file, comments/blank-lines stripped, no need '
-        "to Read it (Read only for a byte-exact edit); mode=abstract: signatures "
-        "only, Read for full source; mode=dir: directory listing</legend>")
     parts.append(f"<condensed_prompt>{condense_prompt(prompt)}</condensed_prompt>")
     kw = ", ".join(paths + symbols)
     parts.append(f"<keywords>{kw}</keywords>")
