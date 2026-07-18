@@ -4,12 +4,12 @@
 Reads the Claude Code hook JSON on stdin, extracts keywords from the prompt
 (paths, CamelCase/ALL_CAPS symbols, bare extensions), locates the most relevant
 files with fzf fuzzy filename matching + ripgrep definition search, and emits
-an *abstract* of each file (signatures via AST for Python, regex for other
-languages) wrapped in `<file>` XML tags.
+each file wrapped in `<file>` XML tags at a size-appropriate fidelity.
 
 Design patterns:
   1. Tagging      -- each file's context is bounded by `<file path=...>` tags.
-  2. Abstract     -- pull class/def signatures, not the first N raw lines.
+  2. Tiered       -- small files inject as full minified content (no follow-up
+                     Read needed); larger files degrade to signatures only.
   3. Keyword-driven -- searches are triggered by tokens found in the prompt.
 
 Always exits 0; failures degrade to no augmentation rather than blocking submit.
@@ -29,9 +29,19 @@ MIN_WORDS = 4            # skip trivial / conversational prompts
 MAX_KEYWORDS = 8         # cap search fan-out
 MAX_FILES = 6            # cap injected files
 MAX_FILE_CHARS = 1500    # per-file abstract budget
+MINIFY_RAW_CAP = 20000   # skip full-content tier above this raw file size
+MINIFY_MAX_CHARS = 2500  # inject full minified content only if it fits this
 TOTAL_BUDGET = 8000      # overall augmentation budget
 SEARCH_TIMEOUT = 2       # seconds per rg/fd call
 SEARCH_DEADLINE = 4      # seconds total wall-clock budget for all searches
+
+# per-language single-line comment prefix, for safe whitespace-only minify
+LINE_COMMENT = {
+    "py": "#", "sh": "#", "rb": "#", "yaml": "#", "yml": "#", "toml": "#",
+    "js": "//", "ts": "//", "tsx": "//", "jsx": "//", "go": "//", "rs": "//",
+    "java": "//", "c": "//", "cc": "//", "cpp": "//", "h": "//", "hpp": "//",
+    "php": "//", "cs": "//", "lua": "--",
+}
 
 CODE_EXTS = ("py", "js", "ts", "tsx", "jsx", "go", "rs", "java", "rb",
              "c", "cc", "cpp", "h", "hpp", "sh", "lua", "php", "cs")
@@ -126,6 +136,21 @@ def find_files(paths: list[str], symbols: list[str], root: str) -> list[str]:
             seen.add(rel)
             ranked.append(rel)
 
+    def add_dir_contents(dir_path: str) -> None:
+        """Recursively add files from a directory, respecting MAX_FILES limit."""
+        try:
+            for entry in os.listdir(os.path.join(root, dir_path)):
+                if len(ranked) >= MAX_FILES or expired():
+                    break
+                entry_rel = os.path.join(dir_path, entry)
+                entry_full = os.path.join(root, entry_rel)
+                if os.path.isfile(entry_full):
+                    add(entry_rel)
+                elif os.path.isdir(entry_full) and not entry.startswith('.'):
+                    add_dir_contents(entry_rel)
+        except (OSError, PermissionError):
+            pass
+
     def file_list() -> list[str]:
         nonlocal all_files
         if all_files is None:
@@ -140,14 +165,20 @@ def find_files(paths: list[str], symbols: list[str], root: str) -> list[str]:
 
     # 1. explicit paths (exact, else fuzzy-matched by basename)
     for p in paths:
-        if expired():
+        if expired() or len(ranked) >= MAX_FILES:
             break
-        if os.path.isfile(os.path.join(root, p)):
+        full_p = os.path.join(root, p)
+        if os.path.isfile(full_p):
             add(p)
+        elif os.path.isdir(full_p):
+            add_dir_contents(p)
         else:
             base = os.path.basename(p)
             for hit in fuzzy_filter(base, file_list(), root, limit=3):
-                add(hit)
+                if os.path.isdir(os.path.join(root, hit)):
+                    add_dir_contents(hit)
+                else:
+                    add(hit)
 
     # 2. filenames fuzzy-matching a symbol (AuthService ~ auth_service.py, authSvc.ts)
     for sym in symbols:
@@ -161,7 +192,7 @@ def find_files(paths: list[str], symbols: list[str], root: str) -> list[str]:
         if expired() or len(ranked) >= MAX_FILES:
             break
         for hit in fuzzy_filter(sym, dir_list(), root, limit=2):
-            add(hit)
+            add_dir_contents(hit)
 
     # 3. definition sites of a symbol via ripgrep
     for sym in symbols:
@@ -244,28 +275,59 @@ def abstract_regex(src: str) -> str:
     return "\n".join(dict.fromkeys(out)).strip()
 
 
-def abstract_file(root: str, rel: str) -> str:
+def minify_code(src: str, lang: str) -> str:
+    """Drop blank lines and full-line comments; safe whitespace-only compression.
+
+    Preserves code and string/docstring content verbatim (comment stripping only
+    fires on lines whose first non-space char is the comment prefix), so the
+    result is the whole file minus noise, not an abstract.
+    """
+    prefix = LINE_COMMENT.get(lang)
+    out: list[str] = []
+    for ln in src.splitlines():
+        stripped = ln.strip()
+        if not stripped:
+            continue
+        if prefix and stripped.startswith(prefix):
+            continue
+        out.append(ln.rstrip())
+    return "\n".join(out)
+
+
+def render_file(root: str, rel: str) -> tuple[str, str]:
+    """Return (body, mode): 'dir' listing, 'full' minified content, or 'abstract'.
+
+    Small files inject as full minified content so no follow-up Read is needed;
+    larger files degrade to a signature-only abstract.
+    """
     path = os.path.join(root, rel)
-    # Handle directories: list their contents
+    # Directories: list their contents
     if os.path.isdir(path):
         try:
             items = sorted(os.listdir(path))[:30]
-            return "Directory:\n" + "\n".join(f"  {item}" for item in items)
+            return "Directory:\n" + "\n".join(f"  {item}" for item in items), "dir"
         except OSError:
-            return ""
-    # Handle files: extract structure
+            return "", "dir"
+    # Files: read once, then pick a tier by size
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
             src = fh.read()
     except OSError:
-        return ""
+        return "", "abstract"
+    lang = rel.rsplit(".", 1)[-1] if "." in rel else "txt"
+    # Tier 1: small file -> full minified content, no Read round-trip needed.
+    if len(src) <= MINIFY_RAW_CAP:
+        full = minify_code(src, lang)
+        if full and len(full) <= MINIFY_MAX_CHARS:
+            return full, "full"
+    # Tier 2: larger file -> structural abstract only.
     body = abstract_python(src) if rel.endswith(".py") else abstract_regex(src)
     if not body:
         # nothing structural found: fall back to a short head
         body = "\n".join(src.splitlines()[:20]).strip()
     if len(body) > MAX_FILE_CHARS:
         body = body[:MAX_FILE_CHARS].rstrip() + "\n... (truncated)"
-    return body
+    return body, "abstract"
 
 
 def condense_prompt(prompt: str) -> str:
@@ -295,23 +357,28 @@ def main() -> int:
         return 0
 
     parts = ["<context-augmentation>"]
+    parts.append(
+        '<legend>mode=full: complete file, comments/blank-lines stripped, no need '
+        "to Read it (Read only for a byte-exact edit); mode=abstract: signatures "
+        "only, Read for full source; mode=dir: directory listing</legend>")
     parts.append(f"<condensed_prompt>{condense_prompt(prompt)}</condensed_prompt>")
     kw = ", ".join(paths + symbols)
     parts.append(f"<keywords>{kw}</keywords>")
 
+    header_count = len(parts)
     used = sum(len(p) for p in parts)
     for rel in files:
-        body = abstract_file(root, rel)
+        body, mode = render_file(root, rel)
         if not body:
             continue
         lang = rel.rsplit(".", 1)[-1] if "." in rel else "txt"
-        block = f'<file path="{rel}" lang="{lang}">\n{body}\n</file>'
+        block = f'<file path="{rel}" lang="{lang}" mode="{mode}">\n{body}\n</file>'
         if used + len(block) > TOTAL_BUDGET:
             break
         parts.append(block)
         used += len(block)
 
-    if len(parts) <= 3:  # header only, no file blocks
+    if len(parts) <= header_count:  # header only, no file blocks
         return 0
 
     parts.append("</context-augmentation>")

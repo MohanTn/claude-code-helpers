@@ -8,16 +8,6 @@
     ".claude/skills".source = ../agents/skills;
   };
 
-  # Live link to the scaffold-toolkit adapter checkout (same role as
-  # .copilot/scaffold in copilot.nix). mkOutOfStoreSymlink rather than a
-  # repo-tracked symlink: home.file dereferences a symlink source into a
-  # store snapshot, which would freeze the adapter at switch time instead of
-  # following the checkout. Kept as a sibling of .claude/hooks, not nested
-  # inside it, since .claude/hooks is itself a whole-directory store symlink
-  # and can't also host an independently-managed child symlink.
-  home.file.".claude/scaffold".source = config.lib.file.mkOutOfStoreSymlink
-    "${config.home.homeDirectory}/REPO/scaffold-toolkit";
-
   # settings.json is the one config file Claude Code itself edits at runtime
   # (permission grants, /config), so it is deployed as a writable copy that
   # each switch refreshes from the repo. If the live file drifted since the

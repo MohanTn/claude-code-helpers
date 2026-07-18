@@ -5,7 +5,7 @@
     enable = true;
 
     shellAliases = {
-      cc = "claude --model haiku --allowed-tools \"Bash(git *)\" Edit";
+      cc = "claude --model haiku --allowed-tools \"Bash(git *)\" \"Bash(fd *)\" \"Bash(rg *)\" \"Bash(npm *)\" \"Bash(python3 *)\" Edit Write";
       repo = "cd $HOME/REPO";
       ls = "ls --color=auto";
     };

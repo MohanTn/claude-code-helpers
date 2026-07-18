@@ -24,11 +24,14 @@ declare -A HOOK_INFO=(
   [user-prompt-submit.sh]="UserPromptSubmit::inject GOAL reminder, clear prior loop/goal state"
   [boilerplate-hint.sh]="UserPromptSubmit::point at ~/.agents/boilerplats/scaffold.js on boilerplate-flavored prompts"
   [pre-tool-use-edit-guard.sh]="PreToolUse (Edit/Write)::block no-op edits/writes"
+  [boilerplate-guard.sh]="PreToolUse (Edit/Write)::mandate scaffold.js for new boilerplate files, protect scaffold:inject markers"
   [pre-tool-use-goal-capture.sh]="PreToolUse (*)::capture the stated GOAL: line from the transcript"
   [pre-tool-use-loop-breaker.sh]="PreToolUse (*)::block 3rd consecutive identical tool call"
   [post-tool-use-edit.sh]="PostToolUse (Edit/Write)::import/type-check/build gate after edits"
+  [post-tool-use-validate-and-test.sh]="PostToolUse (Edit/Write)::auto-detect stack, run lint/build/test, inject error summary only"
   [stop-goal-check.sh]="Stop::block stop until GOAL_CHECK: was stated"
   [session-end-cleanup.sh]="SessionEnd::prune stale hook state"
+  [session-end-audit.sh]="SessionEnd::auto-generate the session audit file (system layer + hook inventory + trace)"
 )
 
 default_payload() {
@@ -51,6 +54,11 @@ default_payload() {
         '{session_id:$sid, cwd:$cwd, hook_event_name:"PreToolUse", tool_name:"Edit",
           tool_input:{file_path:"/tmp/example.txt", old_string:"same text", new_string:"same text"}}'
       ;;
+    boilerplate-guard.sh)
+      jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
+        '{session_id:$sid, cwd:$cwd, hook_event_name:"PreToolUse", tool_name:"Write",
+          tool_input:{file_path:"/tmp/does-not-exist/OrdersController.cs", content:"public class OrdersController {}"}}'
+      ;;
     pre-tool-use-goal-capture.sh | pre-tool-use-loop-breaker.sh)
       jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
         '{session_id:$sid, cwd:$cwd, hook_event_name:"PreToolUse", tool_name:"Bash",
@@ -61,13 +69,18 @@ default_payload() {
         '{session_id:$sid, cwd:$cwd, hook_event_name:"PostToolUse", tool_name:"Edit",
           tool_input:{file_path:"/tmp/example.md"}}'
       ;;
+    post-tool-use-validate-and-test.sh)
+      jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
+        '{session_id:$sid, cwd:$cwd, hook_event_name:"PostToolUse", tool_name:"Edit",
+          tool_input:{file_path:"/tmp/example.ts"}}'
+      ;;
     stop-goal-check.sh)
       jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
         '{session_id:$sid, cwd:$cwd, hook_event_name:"Stop", transcript_path:"/nonexistent/transcript.jsonl", stop_hook_active:false}'
       ;;
-    session-end-cleanup.sh)
+    session-end-cleanup.sh | session-end-audit.sh)
       jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
-        '{session_id:$sid, cwd:$cwd, hook_event_name:"SessionEnd", reason:"exit"}'
+        '{session_id:$sid, cwd:$cwd, hook_event_name:"SessionEnd", reason:"exit", transcript_path:"/nonexistent/transcript.jsonl"}'
       ;;
     *)
       echo '{}'
@@ -235,6 +248,51 @@ cmd_selftest() {
   expect_exit "session-end-cleanup runs cleanly" \
     session-end-cleanup.sh '{}' 0
 
+  expect_exit "boilerplate-guard blocks a hand-written new controller" \
+    boilerplate-guard.sh \
+    "$(jq -n --arg cwd "$cwd" '{session_id:"selftest", cwd:$cwd, tool_name:"Write", tool_input:{file_path:"/tmp/does-not-exist/OrdersController.cs", content:"public class OrdersController {}"}}')" \
+    2
+
+  expect_exit "boilerplate-guard allows a scaffold-marked write" \
+    boilerplate-guard.sh \
+    "$(jq -n --arg cwd "$cwd" '{session_id:"selftest", cwd:$cwd, tool_name:"Write", tool_input:{file_path:"/tmp/does-not-exist/OrdersController.cs", content:"public class OrdersController {\n    // scaffold:inject\n}"}}')" \
+    0
+
+  expect_exit "boilerplate-guard ignores non-boilerplate files" \
+    boilerplate-guard.sh \
+    "$(jq -n --arg cwd "$cwd" '{session_id:"selftest", cwd:$cwd, tool_name:"Write", tool_input:{file_path:"/tmp/does-not-exist/notes.md", content:"hello"}}')" \
+    0
+
+  expect_exit "boilerplate-guard blocks an edit that removes the marker" \
+    boilerplate-guard.sh \
+    "$(jq -n --arg cwd "$cwd" '{session_id:"selftest", cwd:$cwd, tool_name:"Edit", tool_input:{file_path:"/tmp/does-not-exist/OrdersController.cs", old_string:"    // scaffold:inject\n}", new_string:"}"}}')" \
+    2
+
+  expect_exit "boilerplate-guard allows an ordinary edit to a boilerplate file" \
+    boilerplate-guard.sh \
+    "$(jq -n --arg cwd "$cwd" '{session_id:"selftest", cwd:$cwd, tool_name:"Edit", tool_input:{file_path:"/tmp/does-not-exist/OrdersController.cs", old_string:"throw new NotImplementedException();", new_string:"return Ok();"}}')" \
+    0
+
+  # overwrite rules need a real file: marked file loses marker -> block, keeps marker -> allow
+  local guard_dir guard_file
+  guard_dir=$(mktemp -d)
+  guard_file="$guard_dir/OrdersController.cs"
+  printf 'public class OrdersController {\n    // scaffold:inject\n}\n' > "$guard_file"
+  expect_exit "boilerplate-guard blocks an overwrite that drops the marker" \
+    boilerplate-guard.sh \
+    "$(jq -n --arg cwd "$cwd" --arg f "$guard_file" '{session_id:"selftest", cwd:$cwd, tool_name:"Write", tool_input:{file_path:$f, content:"public class OrdersController {}"}}')" \
+    2
+  expect_exit "boilerplate-guard allows an overwrite that keeps the marker" \
+    boilerplate-guard.sh \
+    "$(jq -n --arg cwd "$cwd" --arg f "$guard_file" '{session_id:"selftest", cwd:$cwd, tool_name:"Write", tool_input:{file_path:$f, content:"public class OrdersController {\n    // scaffold:inject\n}"}}')" \
+    0
+  rm -rf "$guard_dir"
+
+  expect_contains "boilerplate-hint fires on an endpoint-flavored prompt" \
+    boilerplate-hint.sh \
+    "$(jq -n --arg cwd "$cwd" '{session_id:"selftest", cwd:$cwd, prompt:"create a new TradeNotes endpoint for CRUD"}')" \
+    "scaffold.js"
+
   expect_contains "boilerplate-hint fires on a matching prompt" \
     boilerplate-hint.sh \
     "$(jq -n --arg cwd "$cwd" '{session_id:"selftest", cwd:$cwd, prompt:"create a new repository class for Orders"}')" \
@@ -243,6 +301,16 @@ cmd_selftest() {
   expect_empty "boilerplate-hint stays silent on an unrelated prompt" \
     boilerplate-hint.sh \
     "$(jq -n --arg cwd "$cwd" '{session_id:"selftest", cwd:$cwd, prompt:"why is the login test flaky"}')"
+
+  expect_exit "post-tool-use-validate-and-test exits 0 on unknown stack (no project root)" \
+    post-tool-use-validate-and-test.sh \
+    "$(jq -n --arg cwd "/tmp/nonexistent" '{session_id:"selftest", cwd:$cwd, tool_name:"Edit", tool_input:{file_path:"/tmp/test.txt"}}')" \
+    0
+
+  expect_exit "session-end-audit exits 0 even when transcript is missing" \
+    session-end-audit.sh \
+    "$(jq -n --arg cwd "$cwd" '{session_id:"selftest", cwd:$cwd, hook_event_name:"SessionEnd", reason:"exit", transcript_path:"/nonexistent/transcript.jsonl"}')" \
+    0
 
   rm -rf "${STATE_HOME:?}/selftest"
 

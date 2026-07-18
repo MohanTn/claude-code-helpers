@@ -20,6 +20,10 @@ case "$tool_name" in
   create | edit | str_replace_editor | apply_patch)
     err=$(printf '%s' "$payload" | bash "$CLAUDE_HOOKS_HOME/pre-tool-use-edit-guard.sh" 2>&1 >/dev/null)
     [ $? -eq 2 ] && deny "$err"
+    # boilerplate mandate: `create` (→Write) must come from scaffold.js,
+    # edit tools (→Edit) must keep the scaffold:inject marker
+    err=$(printf '%s' "$payload" | bash "$CLAUDE_HOOKS_HOME/boilerplate-guard.sh" 2>&1 >/dev/null)
+    [ $? -eq 2 ] && deny "$err"
     ;;
 esac
 

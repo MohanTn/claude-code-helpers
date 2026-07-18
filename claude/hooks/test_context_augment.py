@@ -16,6 +16,26 @@ _spec.loader.exec_module(ca)
 
 SCRIPT = str(Path(__file__).with_name("context-augment.py"))
 
+# shared temp fixtures for render_file tier tests
+_TMP = tempfile.TemporaryDirectory()
+_TMP_ROOT = _TMP.name
+
+
+def _small_rel():
+    rel = "small.py"
+    (Path(_TMP_ROOT) / rel).write_text(
+        "class AuthService:\n    def login(self, user):\n        return True\n")
+    return rel
+
+
+def _large_rel():
+    rel = "large.py"
+    # >2500 chars so the full-content tier is skipped and abstract kicks in
+    lines = [f"def fn_{i}(a, b):\n    payload_marker = a + b\n    return payload_marker\n"
+             for i in range(120)]
+    (Path(_TMP_ROOT) / rel).write_text("\n".join(lines))
+    return rel
+
 
 def run_main(prompt, cwd):
     proc = subprocess.run(
@@ -36,7 +56,8 @@ class Keywords(unittest.TestCase):
         self.assertIn("get_user", syms)
 
     def test_drops_plain_words(self):
-        _, syms = ca.extract_keywords("Please make the thing work when ready")
+        # short lowercase words (<5 chars, no code shape) are not symbols
+        _, syms = ca.extract_keywords("Please can you go fix the app now")
         self.assertEqual(syms, [])
 
     def test_strips_at_prefix(self):
@@ -78,6 +99,34 @@ class Abstraction(unittest.TestCase):
         self.assertLessEqual(len(ca.condense_prompt("word " * 200)), 404)
 
 
+class Minify(unittest.TestCase):
+    def test_strips_comments_and_blanks(self):
+        src = ("# leading comment\n"
+               "import os\n\n\n"
+               "def f():\n"
+               "    return 1\n")
+        out = ca.minify_code(src, "py")
+        self.assertNotIn("# leading comment", out)
+        self.assertNotIn("\n\n", out)          # blank lines collapsed
+        self.assertIn("import os", out)
+        self.assertIn("return 1", out)         # code body preserved verbatim
+
+    def test_preserves_hash_inside_string(self):
+        src = 'url = "http://x#frag"\n'
+        self.assertIn('url = "http://x#frag"', ca.minify_code(src, "py"))
+
+    def test_small_file_full_mode(self):
+        body, mode = ca.render_file(_TMP_ROOT, _small_rel())
+        self.assertEqual(mode, "full")
+        self.assertIn("return True", body)     # full content, not just signature
+
+    def test_large_file_abstract_mode(self):
+        body, mode = ca.render_file(_TMP_ROOT, _large_rel())
+        self.assertEqual(mode, "abstract")
+        self.assertIn("def fn_0", body)        # signature kept
+        self.assertNotIn("payload_marker", body)  # body dropped
+
+
 class EndToEnd(unittest.TestCase):
     def test_short_prompt_no_output(self):
         self.assertEqual(run_main("hi there", os.getcwd()), "")
@@ -90,8 +139,9 @@ class EndToEnd(unittest.TestCase):
             out = run_main("Please fix AuthService login in auth_service.py now", d)
             self.assertIn("<context-augmentation>", out)
             self.assertIn('<file path="auth_service.py"', out)
+            self.assertIn('mode="full"', out)      # small file -> full content
             self.assertIn("class AuthService:", out)
-            self.assertNotIn("return True", out)
+            self.assertIn("return True", out)      # no Read needed to see the body
 
 
 if __name__ == "__main__":

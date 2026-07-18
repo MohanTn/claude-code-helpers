@@ -3,7 +3,14 @@
 
 const fs = require('fs');
 const path = require('path');
-const Handlebars = require('handlebars');
+// node_modules/ is gitignored, so the Nix-store copy of this directory ships
+// without deps; nix/agents.nix populates this cache via npm ci at switch time.
+let Handlebars;
+try {
+  Handlebars = require('handlebars');
+} catch {
+  Handlebars = require(path.join(process.env.HOME || '', '.cache', 'boilerplats', 'node_modules', 'handlebars'));
+}
 const pkg = require('./package.json');
 
 const DEFAULT_MARKER = '// scaffold:inject';

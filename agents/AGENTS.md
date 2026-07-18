@@ -8,6 +8,7 @@ Be terse. One sentence per update. No summaries, no narratives, no hedging. Answ
 - Never auto-commit. Only commit when asked.
 - Verify behavior; never claim from tests alone. Done means acceptance criteria pass.
 - Lead with outcome. Omit details that don't change what the user does next.
+- Boilerplate files (controller/repository/handler/validator/factory/mapper) are always created with `node ~/.agents/boilerplats/scaffold.js`, never hand-written. New members in generated files start from `--inject --template member`. Never remove a `scaffold:inject` marker. A hook enforces generator-created files and marker retention.
 
 # Decisions
 - Stop for: destructive actions, outward-facing changes, genuine scope changes.

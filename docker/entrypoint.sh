@@ -49,10 +49,6 @@ case "${AGENT_TOOL:-}" in
     cp -f /opt/agent-config/agents/AGENTS.md "$HOME/.copilot/copilot-instructions.md"
     rm -rf "$HOME/.copilot/hooks"
     cp -r /opt/agent-config/copilot/hooks "$HOME/.copilot/hooks"
-    # Only scaffold-pack-author, matching nix/copilot.nix: Copilot can't
-    # render the Claude-artifact-specific skills (arch, featurePlan).
-    rm -rf "$HOME/.copilot/skills/scaffold-pack-author"
-    cp -r /opt/agent-config/agents/skills/scaffold-pack-author "$HOME/.copilot/skills/scaffold-pack-author"
     ;;
   pi)
     sync_agents_layer
