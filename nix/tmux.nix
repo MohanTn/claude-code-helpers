@@ -79,7 +79,7 @@
       # pi warns on launch when this is off; lets modified Enter (Shift/Ctrl
       # +Enter) reach TUI apps instead of being collapsed to plain Enter
       set -g extended-keys on
-
+      set -g extended-keys-format csi-u
       set -g status-position bottom
       set -g status-left "#{E:@catppuccin_status_session}"
       set -g status-right-length 100

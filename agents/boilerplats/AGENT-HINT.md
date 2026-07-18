@@ -1,6 +1,6 @@
 ## Boilerplate generator
 
-For repository/controller/handler/validator/factory/commands/query/request/response/mapper/helper/di-injection boilerplate in csharp, typescript, javascript, or python (or script/function/validator/helper in sh), using the generator is MANDATORY, never hand-write it. On Claude Code and Copilot a PreToolUse hook deterministically blocks hand-written new boilerplate files:
+For repository/controller/handler/validator/factory/commands/query/request/response/mapper/helper/di-injection boilerplate in csharp, typescript, javascript, python, or go (or script/function/validator/helper in sh), using the generator is MANDATORY, never hand-write it. On Claude Code and Copilot a PreToolUse hook deterministically blocks hand-written new boilerplate files:
 
     node ~/.agents/boilerplats/scaffold.js --lang <lang> --template <name> --out <path> --data '<json>' [--inject --marker '<comment>']
 

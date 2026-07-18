@@ -1,0 +1,18 @@
+{{!-- Data: { Package, EntityName, ServiceType, ServiceField } --}}
+package {{{Package}}}
+
+import "net/http"
+
+type {{{EntityName}}}Controller struct {
+	{{{ServiceField}}} {{{ServiceType}}}
+}
+
+func New{{{EntityName}}}Controller({{{ServiceField}}} {{{ServiceType}}}) *{{{EntityName}}}Controller {
+	return &{{{EntityName}}}Controller{
+		{{{ServiceField}}}: {{{ServiceField}}},
+	}
+}
+
+func (c *{{{EntityName}}}Controller) RegisterRoutes(mux *http.ServeMux) {
+	// scaffold:inject
+}
