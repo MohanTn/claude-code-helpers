@@ -350,6 +350,27 @@ def condense_prompt(prompt: str) -> str:
     return flat[:400] + (" ..." if len(flat) > 400 else "")
 
 
+def should_inject_repo_map_hint(prompt: str, paths: list[str], symbols: list[str]) -> bool:
+    """Detect if prompt is about file discovery in tracked directories."""
+    # Keywords that suggest file-discovery queries
+    discovery_keywords = {
+        "boilerplate", "scaffold", "template", "controller", "repository",
+        "handler", "validator", "mapper", "hooks", "agents", "ls", "find",
+        "structure", "layout", "what file", "which file", "list", "inventory"
+    }
+    prompt_lower = prompt.lower()
+    for kw in discovery_keywords:
+        if kw in prompt_lower:
+            return True
+    # Or if querying paths that are in tracked dirs
+    tracked_dirs = {"agents/boilerplats", "claude/hooks", "agents/skills"}
+    for p in paths:
+        for td in tracked_dirs:
+            if td in p:
+                return True
+    return False
+
+
 def main() -> int:
     try:
         data = json.load(sys.stdin)
@@ -374,6 +395,10 @@ def main() -> int:
     parts.append(f"<condensed_prompt>{condense_prompt(prompt)}</condensed_prompt>")
     kw = ", ".join(paths + symbols)
     parts.append(f"<keywords>{kw}</keywords>")
+
+    # Inject repo-map-check skill reference if doing file discovery
+    if should_inject_repo_map_hint(prompt, paths, symbols):
+        parts.append("<skill name=\"repo-map-check\">Check .claude/repo-map.md for cached file inventory before running filesystem queries.</skill>")
 
     header_count = len(parts)
     used = sum(len(p) for p in parts)
