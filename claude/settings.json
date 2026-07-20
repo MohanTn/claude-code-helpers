@@ -86,12 +86,6 @@
             "type": "command",
             "command": "bash \"$HOME/.claude/hooks/post-tool-use-edit.sh\"",
             "timeout": 45
-          },
-          {
-            "type": "command",
-            "command": "bash \"$HOME/.claude/hooks/post-tool-use-validate-and-test.sh\"",
-            "timeout": 120,
-            "onError": "continue"
           }
         ]
       }
@@ -120,6 +114,12 @@
             "type": "command",
             "command": "bash \"$HOME/.claude/hooks/session-end-audit.sh\"",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/session-end-validate-and-test.sh\"",
+            "timeout": 120,
+            "onError": "continue"
           }
         ]
       }

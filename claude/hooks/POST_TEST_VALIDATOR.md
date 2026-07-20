@@ -1,13 +1,13 @@
-# Post-Tool-Use Validate & Test Hook
+# Session-End Validate & Test Hook
 
 **Purpose:** Auto-detect project stack (Node.js, .NET, Python, Go, Rust), run lint/build/test, inject only error summaries back to AI.
 
-**Why:** Prevents AI from re-running tests 2-3x to parse errors. Captures the error pack once, distills it, and surfaces only actionable failures.
+**Why:** Prevents AI from re-running tests 2-3x to parse errors. Captures the error pack once, distills it, and surfaces only actionable failures. Runs once per session instead of after every edit so individual edits aren't held up by a full build+test cycle — see `post-tool-use-edit.sh` for the fast, per-file gate that still runs on every Edit/Write.
 
 ## How it works
 
-1. **Triggers:** After every Edit or Write tool use (configurable in `settings.json`)
-2. **Detection:** Walks up directory tree looking for `package.json`, `*.csproj`, `pyproject.toml`, `go.mod`, `Cargo.toml`
+1. **Triggers:** Once, when the session ends (configurable in `settings.json`)
+2. **Detection:** Walks up the directory tree from `cwd` looking for `package.json`, `*.csproj`, `pyproject.toml`, `go.mod`, `Cargo.toml`
 3. **Stack identification:**
    - Node.js → `npm test`, `npm run build`
    - .NET → `dotnet test`, `dotnet build`
@@ -18,7 +18,7 @@
    - Runs full build/test output into `/tmp/build.log` or `/tmp/test.log`
    - Greps for lines matching `error`, `FAIL`, `failed`, etc.
    - Limits output to **15–30 lines** (first N failures, not full stack trace)
-5. **Error injection:** Dumps error summary to stderr (caught by Claude Code and passed to AI as context)
+5. **Error injection:** Dumps error summary to stderr. At SessionEnd there's no further AI turn to feed it to, so this is a best-effort note logged and shown to the user, not a blocking gate.
 6. **Exit code:** Returns 1 if errors found, 0 if all checks pass
 
 ## What gets filtered out
@@ -33,11 +33,10 @@
 **In `settings.json`:**
 ```json
 {
-  "matcher": "Edit|Write",
   "hooks": [
     {
       "type": "command",
-      "command": "bash \"$HOME/.claude/hooks/post-tool-use-validate-and-test.sh\"",
+      "command": "bash \"$HOME/.claude/hooks/session-end-validate-and-test.sh\"",
       "timeout": 120,
       "onError": "continue"
     }
@@ -46,30 +45,29 @@
 ```
 
 - `timeout: 120` — tests can take a while; 2 minutes is safe for most projects
-- `onError: "continue"` — test failure doesn't block the AI, just annotates the turn
+- `onError: "continue"` — a failing run doesn't block session end, just gets logged
 
 ## Example flow
 
-1. AI edits `src/OrdersController.cs`
-2. Hook detects `.csproj` → stack = "dotnet"
+1. AI edits `src/OrdersController.cs` during the session
+2. Session ends; hook detects `.csproj` → stack = "dotnet"
 3. Runs `dotnet build` → finds compilation error in 3 files
 4. Greps errors: extracts 15 lines of actual `error CS` messages
-5. Returns stderr (captured by Claude Code):
+5. Writes the summary to stderr and the hook log:
    ```
    Build failed:
    /src/OrdersController.cs(21,5): error CS1520: Method must have a return type
    /src/OrdersController.cs(26,8): error CS1520: Method must have a return type
    ...
    ```
-6. AI sees the error pack, fixes it, and tries again
-7. Next hook run finds no errors, exits 0 (silent success)
+6. Next session's audit/log shows the failure so it can be picked up at the start of the next session
 
 ## Supported edge cases
 
 - **No test runner found:** Hook exits silently (stack detected but no test bin)
-- **Mixed stacks** (monorepo): Hook walks from edited file's directory up; finds nearest `package.json` or `.csproj` first
+- **Mixed stacks** (monorepo): Hook walks up from `cwd`; finds nearest `package.json` or `.csproj` first
 - **Python import-only check:** If no pytest/unittest, does a `python -m py_compile` on .py files
-- **Timeout:** If build/test takes >120s, hook times out (doesn't block AI, just annotates)
+- **Timeout:** If build/test takes >120s, hook times out (doesn't block session end, just annotates)
 
 ## Logging
 
@@ -82,6 +80,6 @@ All hook steps logged to `$state_dir/hook.log` (e.g. `~/.local/state/claude-hook
 
 ## Future enhancements
 
-- Caching: skip test re-run if file edit is in docs/comments only
+- Caching: skip test re-run if no files changed since the last session-end run
 - Diffs: only run tests affected by changed files (via git diff)
 - Custom rules: allow `.claude/post-test.json` to override lint/test commands per project

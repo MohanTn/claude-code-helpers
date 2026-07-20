@@ -28,10 +28,10 @@ declare -A HOOK_INFO=(
   [pre-tool-use-goal-capture.sh]="PreToolUse (*)::capture the stated GOAL: line from the transcript"
   [pre-tool-use-loop-breaker.sh]="PreToolUse (*)::block 3rd consecutive identical tool call"
   [post-tool-use-edit.sh]="PostToolUse (Edit/Write)::import/type-check/build gate after edits"
-  [post-tool-use-validate-and-test.sh]="PostToolUse (Edit/Write)::auto-detect stack, run lint/build/test, inject error summary only"
   [stop-goal-check.sh]="Stop::advisory-only; log if GOAL_CHECK: was never stated (never blocks)"
   [session-end-cleanup.sh]="SessionEnd::prune stale hook state"
   [session-end-audit.sh]="SessionEnd::auto-generate the session audit file (system layer + hook inventory + trace)"
+  [session-end-validate-and-test.sh]="SessionEnd::auto-detect stack, run lint/build/test once per session, inject error summary only"
 )
 
 default_payload() {
@@ -69,16 +69,11 @@ default_payload() {
         '{session_id:$sid, cwd:$cwd, hook_event_name:"PostToolUse", tool_name:"Edit",
           tool_input:{file_path:"/tmp/example.md"}}'
       ;;
-    post-tool-use-validate-and-test.sh)
-      jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
-        '{session_id:$sid, cwd:$cwd, hook_event_name:"PostToolUse", tool_name:"Edit",
-          tool_input:{file_path:"/tmp/example.ts"}}'
-      ;;
     stop-goal-check.sh)
       jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
         '{session_id:$sid, cwd:$cwd, hook_event_name:"Stop", transcript_path:"/nonexistent/transcript.jsonl", stop_hook_active:false}'
       ;;
-    session-end-cleanup.sh | session-end-audit.sh)
+    session-end-cleanup.sh | session-end-audit.sh | session-end-validate-and-test.sh)
       jq -n --arg sid "$TEST_SESSION_ID" --arg cwd "$cwd" \
         '{session_id:$sid, cwd:$cwd, hook_event_name:"SessionEnd", reason:"exit", transcript_path:"/nonexistent/transcript.jsonl"}'
       ;;
@@ -302,9 +297,9 @@ cmd_selftest() {
     boilerplate-hint.sh \
     "$(jq -n --arg cwd "$cwd" '{session_id:"selftest", cwd:$cwd, prompt:"why is the login test flaky"}')"
 
-  expect_exit "post-tool-use-validate-and-test exits 0 on unknown stack (no project root)" \
-    post-tool-use-validate-and-test.sh \
-    "$(jq -n --arg cwd "/tmp/nonexistent" '{session_id:"selftest", cwd:$cwd, tool_name:"Edit", tool_input:{file_path:"/tmp/test.txt"}}')" \
+  expect_exit "session-end-validate-and-test exits 0 on unknown stack (no project root)" \
+    session-end-validate-and-test.sh \
+    "$(jq -n --arg cwd "/tmp/nonexistent" '{session_id:"selftest", cwd:$cwd, hook_event_name:"SessionEnd"}')" \
     0
 
   expect_exit "session-end-audit exits 0 even when transcript is missing" \

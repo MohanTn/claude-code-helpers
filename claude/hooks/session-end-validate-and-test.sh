@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
-# PostToolUse (Edit/Write) — Auto-detect stack, run lint/build/test, inject error summary only.
+# SessionEnd — Auto-detect stack, run lint/build/test once per session, inject error summary only.
 # Detects: Node.js, .NET, Python, Go, Rust. Captures only the error pack, not full output.
-# This prevents the AI from re-running tests 2-3x to parse errors.
+# Runs once at session end instead of after every Edit/Write so individual edits
+# aren't held up by a full build+test cycle.
 
 input=$(cat)
 export HOOK_INPUT="$input"
 source "$HOME/.claude/hooks/lib/common.sh"
-
-[ "$tool_name" = "Edit" ] || [ "$tool_name" = "Write" ] || exit 0
-
-file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
-[ -n "$file" ] || exit 0
 
 # Find project root (first dir with a known marker going up from cwd)
 find_project_root() {

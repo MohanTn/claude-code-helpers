@@ -182,21 +182,6 @@ export default function (pi: ExtensionAPI) {
         isError: true,
       };
     }
-
-    const validate = runClaudeHook("post-tool-use-validate-and-test.sh", {
-      session_id: sessionId,
-      cwd: ctx.cwd,
-      hook_event_name: "PostToolUse",
-      tool_name: toClaudeToolName(event.toolName),
-      tool_input: { file_path: filePath },
-    });
-    if (validate.exitCode !== 0 && validate.stderr.trim()) {
-      return {
-        content: [...event.content, { type: "text", text: validate.stderr.trim() }],
-        details: event.details,
-        isError: true,
-      };
-    }
   });
 
   // Adapter for the canonical goal-check gate in claude/hooks (see the
@@ -230,5 +215,8 @@ export default function (pi: ExtensionAPI) {
       }
     }
     runClaudeHook("session-end-cleanup.sh", {});
+    // Full lint/build/test pass runs once here instead of after every
+    // Edit/Write (see tool_result above) so individual edits aren't held up.
+    runClaudeHook("session-end-validate-and-test.sh", { session_id: sessionId, cwd: ctx.cwd });
   });
 }
