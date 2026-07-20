@@ -63,6 +63,16 @@
         ]
       },
       {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/pre-tool-use-read-guard.sh\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "matcher": "*",
         "hooks": [
           {

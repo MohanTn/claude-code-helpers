@@ -37,11 +37,14 @@ def _large_rel():
     return rel
 
 
-def run_main(prompt, cwd):
+def run_main(prompt, cwd, session_id=None, env=None):
+    payload = {"prompt": prompt, "cwd": cwd}
+    if session_id:
+        payload["session_id"] = session_id
     proc = subprocess.run(
         [sys.executable, SCRIPT],
-        input=json.dumps({"prompt": prompt, "cwd": cwd}),
-        capture_output=True, text=True,
+        input=json.dumps(payload),
+        capture_output=True, text=True, env=env,
     )
     return proc.stdout
 
@@ -142,6 +145,41 @@ class EndToEnd(unittest.TestCase):
             self.assertIn('mode="full"', out)      # small file -> full content
             self.assertIn("class AuthService:", out)
             self.assertIn("return True", out)      # no Read needed to see the body
+
+
+class Ledger(unittest.TestCase):
+    def test_full_mode_file_recorded_in_ledger(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as state_home:
+            subprocess.run(["git", "init", "-q"], cwd=d)
+            (Path(d) / "auth_service.py").write_text(
+                "class AuthService:\n    def login(self, user):\n        return True\n")
+            env = {**os.environ, "XDG_STATE_HOME": state_home}
+            run_main("Please fix AuthService login in auth_service.py now", d,
+                     session_id="ledger-test", env=env)
+            ledger_file = Path(state_home) / "claude-hooks" / "ledger-test" / "context_shown.json"
+            self.assertTrue(ledger_file.exists())
+            ledger = json.loads(ledger_file.read_text())
+            self.assertIn(str(Path(d) / "auth_service.py"), ledger)
+
+    def test_abstract_mode_file_not_recorded(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as state_home:
+            subprocess.run(["git", "init", "-q"], cwd=d)
+            rel = _large_rel_in(d)
+            env = {**os.environ, "XDG_STATE_HOME": state_home}
+            run_main(f"Please look at large.py fn_0 now", d,
+                      session_id="ledger-test-2", env=env)
+            ledger_file = Path(state_home) / "claude-hooks" / "ledger-test-2" / "context_shown.json"
+            if ledger_file.exists():
+                ledger = json.loads(ledger_file.read_text())
+                self.assertNotIn(str(Path(d) / rel), ledger)
+
+
+def _large_rel_in(root):
+    rel = "large.py"
+    lines = [f"def fn_{i}(a, b):\n    payload_marker = a + b\n    return payload_marker\n"
+             for i in range(120)]
+    (Path(root) / rel).write_text("\n".join(lines))
+    return rel
 
 
 if __name__ == "__main__":

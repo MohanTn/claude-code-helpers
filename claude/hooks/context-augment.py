@@ -12,6 +12,10 @@ Design patterns:
                      Read needed); larger files degrade to signatures only.
   3. Keyword-driven -- searches are triggered by tokens found in the prompt.
 
+Files injected at "full" fidelity are recorded in a per-session ledger
+(state_dir/context_shown.json, same state_dir pre-tool-use-read-guard.sh
+reads) so that hook can block a redundant Read of a file already in context.
+
 Always exits 0; failures degrade to no augmentation rather than blocking submit.
 """
 from __future__ import annotations
@@ -58,6 +62,33 @@ STOPWORDS = {
     "Set", "Run", "Should", "Would", "Could", "Please", "Need", "Want", "How",
     "What", "Why", "Where", "AI", "OK",
 }
+
+
+def ledger_path(session_id: str) -> str:
+    """Path to this session's context_shown ledger (mirrors lib/common.sh's state_dir)."""
+    state_home = os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+    return os.path.join(state_home, "claude-hooks", session_id or "default", "context_shown.json")
+
+
+def record_shown(session_id: str, abs_paths: list[str]) -> None:
+    """Merge abs_paths into the session's ledger of fully-injected files. Never raises."""
+    if not abs_paths:
+        return
+    path = ledger_path(session_id)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                ledger = json.load(fh)
+        except (OSError, json.JSONDecodeError, ValueError):
+            ledger = {}
+        now = time.time()
+        for p in abs_paths:
+            ledger[p] = now
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(ledger, fh)
+    except OSError:
+        pass
 
 
 def run(cmd: list[str], cwd: str) -> list[str]:
@@ -363,6 +394,7 @@ def main() -> int:
 
     header_count = len(parts)
     used = sum(len(p) for p in parts)
+    shown_full: list[str] = []
     for rel in files:
         body, mode = render_file(root, rel)
         if not body:
@@ -373,9 +405,13 @@ def main() -> int:
             break
         parts.append(block)
         used += len(block)
+        if mode == "full":
+            shown_full.append(os.path.join(root, rel))
 
     if len(parts) <= header_count:  # header only, no file blocks
         return 0
+
+    record_shown(data.get("session_id") or "default", shown_full)
 
     parts.append("</context-augmentation>")
     print("\n".join(parts))
