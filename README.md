@@ -1,112 +1,174 @@
 # mohan-dotfiles
 
-Reproducible machine setup as a Nix flake: Claude Code config, zsh + oh-my-zsh, git, Neovim (LazyVim), and every tool they depend on. Clone it on any Linux box or WSL distro, run one script, and the machine is set up the way I like it.
+Set up a whole Linux or WSL machine with one command. This repo is a Nix flake that installs and configures the shell, editor, git, and three AI coding agents, pinned so every machine you run it on ends up identical.
 
-```
-flake.nix     inputs (pinned nixpkgs + home-manager) and CI checks
-nix/          one Home Manager module per concern:
-              packages, zsh, git, agents, claude, nvim
-agents/       ~/.agents (tool-agnostic layer: AGENTS.md global instructions
-              plus skills/, also linked to ~/.claude/skills)
-claude/       ~/.claude/{settings.json,CLAUDE.md,hooks,statusline-usage.py}
-zsh/          chrome-devtools-axi.zsh: axi wrapper sourced by nix/zsh.nix
-nvim/         ~/.config/nvim (LazyVim)
-setup.sh      single entry point: setup, apply/update, drift audit, input upgrade
-setup-packages.sh  interactive picker for optional packages (Docker, Python, etc.)
-```
+**What you get:** zsh (zinit plugins, oh-my-posh prompt, fzf-tab, autosuggestions) · Neovim (kickstart.nvim, LSP for C#/TypeScript) · tmux · git · Claude Code, GitHub Copilot CLI, and Pi, all sharing one set of instructions, skills, and safety hooks · Alacritty · ripgrep, fd, fzf, jq, and the rest of the CLI toolkit.
 
-## New machine (Linux or WSL)
+---
 
-The repo must live at `~/REPO/mohan-dotfiles`; the account name doesn't matter; `flake.nix` reads `$USER` at eval time (see `--impure` below), so it works unmodified under any username.
+## Set up a new machine
 
-Follow these steps in order:
+### Before you start
 
-```
-# 1. Clone the repo to the expected path
+- **Linux or WSL2.** Nothing else is supported.
+- **git and curl** installed. Everything else, including Nix itself, is installed for you.
+- **A GitHub SSH key**, or swap the clone URL below for HTTPS.
+- **~5 GB of disk** and 10–20 minutes for the first run. Later runs take seconds.
+
+You do *not* need Nix, Node, or Python beforehand.
+
+### Three steps
+
+```bash
+# 1. Clone to the expected path (this exact location matters — see below)
 git clone git@github.com:MohanTn/mohan-dotfiles.git ~/REPO/mohan-dotfiles
 
-# 2. Choose which optional packages to install (Docker, Python tools,
-#    pipeline-worker, herdr, GitHub Copilot CLI, LocalScribe, git identity)
+# 2. Pick your optional packages (interactive, ~30 seconds)
 ~/REPO/mohan-dotfiles/setup-packages.sh
 
-# 3. Apply the configuration
+# 3. Install and apply everything
 ~/REPO/mohan-dotfiles/setup.sh
 ```
 
-**Step 2, `setup-packages.sh`,** asks a yes/no question per optional package and writes the answers to `~/.config/mohan-dotfiles/packages-config.nix` (outside the repo, machine-local, never committed). If you skip this step, `nix/default-packages-config.nix` applies and every optional package is off. Re-run `setup-packages.sh` any time to change the selection, then re-run `setup.sh` to apply it.
+Then **open a new terminal** — the login shell changes to zsh, and the current session won't pick that up.
 
-**Step 3, `setup.sh`,** installs Nix (Determinate Systems installer) if missing, activates the Home Manager configuration (conflicting existing files are kept as `*.hm-backup`), switches the login shell to zsh, installs Google Chrome if missing (apt machines only: the chrome-devtools-axi browser bridge finds Chrome solely at its native `/opt/google/chrome` path, and Google's .deb registers the apt repo so the browser self-updates), and finishes with a drift audit. Everything Nix-installed is pinned by `flake.lock`, so every machine gets identical versions. On machines without Google Chrome, the `axi` zsh wrapper (`zsh/chrome-devtools-axi.zsh`) falls back to driving a debug Chromium.
+> **The path is not negotiable.** The repo must live at `~/REPO/mohan-dotfiles`. Your username doesn't matter: the flake reads `$USER` when it evaluates, so any account works unmodified.
+
+### What each step actually does
+
+**Step 2 — `setup-packages.sh`** asks six yes/no questions (Docker, Python dev tools, pipeline-worker, GitHub Copilot CLI, LocalScribe, git identity) and saves your answers to `~/.config/mohan-dotfiles/packages-config.nix`. That file lives outside the repo and is never committed, so your choices are yours alone. Skip this step and every optional package stays off (`nix/default-packages-config.nix` applies instead). Re-run it any time to change your mind, then re-run `setup.sh`.
+
+**Step 3 — `setup.sh`** does the real work, in order:
+
+1. Installs Nix via the Determinate Systems installer, if missing.
+2. Activates the Home Manager configuration. Existing files that would be overwritten are preserved as `*.hm-backup` — nothing of yours is destroyed.
+3. Folds any hand-written `~/.zshrc` into `~/.zshrc.local` so your existing customizations survive.
+4. Switches your login shell to zsh.
+5. Installs Google Chrome if missing (apt machines only — the `axi` browser bridge looks for Chrome at `/opt/google/chrome`; without it, `axi` falls back to a debug Chromium).
+6. Runs a drift audit and prints a summary.
+
+### Did it work?
+
+```bash
+./setup.sh doctor   # verifies every managed file still comes from the Nix store
+```
+
+Exit code 0 and "all checks passed" means you're done. Open a new terminal and you should see the Catppuccin-themed prompt.
+
+### If something goes wrong
+
+| Symptom | Fix |
+| --- | --- |
+| `error: ... does not exist` right after you added or renamed a file | Nix only sees git-tracked files. Run `git add` on the new file (staging is enough, no commit needed) and retry. This is the single most common confusion — check it before anything else. |
+| Shell still isn't zsh | Open a *new* terminal. If it persists, log out and back in; the login shell change needs a fresh session. |
+| `setup.sh doctor` reports drift | Something edited a managed file by hand. Re-run `./setup.sh` to restore it; your edited copy is kept as `*.hm-backup`. |
+| Command not found after install | `~/.local/bin` and `~/.npm-global/bin` are added to `PATH` by the managed zshrc — open a new terminal. |
+| Nix commands fail with "experimental feature" | Use `./setup.sh` rather than calling `nix` yourself; it passes the flags this flake needs. |
+
+---
+
+## Everyday use
+
+Configs are served **read-only** from the Nix store. So the loop is always: edit in this repo → apply → commit.
+
+```bash
+./setup.sh                                  # apply your changes
+git add -A && git commit -m "..." && git push
+```
+
+Re-running `setup.sh` when nothing changed is a no-op, so it's safe to run any time. It's also the update command — there's no separate one.
+
+```bash
+./setup.sh doctor    # audit only, changes nothing, exits 1 on drift
+./setup.sh upgrade   # update pinned nixpkgs/home-manager, then apply
+```
+
+Because the live files under `$HOME` are store symlinks, editing them directly does nothing lasting — the next `setup.sh` reverts it. Always edit the repo. This applies to Neovim too: `~/.config/nvim` is a read-only store symlink, so nvim config changes need a `./setup.sh` before they take effect.
+
+**One deliberate exception:** `~/.claude/settings.json` is a writable copy, because Claude Code edits it at runtime (permission grants, `/config`). Every switch refreshes it from the repo; if the live file had drifted, the previous version is kept as `settings.json.hm-prev`. To keep a runtime change permanently, copy it back into `claude/settings.json` before switching.
 
 ### Where things are configured
 
 | What | Where | Committed? |
 | --- | --- | --- |
-| Which optional packages are installed | `setup-packages.sh` prompt → `~/.config/mohan-dotfiles/packages-config.nix` | No (machine-local, regenerated by the script) |
-| Non-secret environment variables (e.g. `PIPELINE_WORKER_AGENT`, `PIPELINE_WORKER_POLL_INTERVAL_SECONDS`) | `nix/zsh.nix`, in the `home.sessionVariables` block | Yes |
-| Secrets (e.g. `PIPELINE_WORKER_GITHUB_TOKEN`) | `~/.zshrc.local` (create it yourself; never put a real secret in a `.nix` file) | No, never committed |
-| zsh itself (aliases, oh-my-zsh, prompt, init snippets) | `nix/zsh.nix` | Yes |
-| Git identity (`userName`/`userEmail`) | Answer "yes" to prompt 7 in `setup-packages.sh`, or edit `nix/optional-packages.nix` directly | Config: yes. Selection: no |
+| Which optional packages are installed | `setup-packages.sh` → `~/.config/mohan-dotfiles/packages-config.nix` | No — machine-local |
+| Shell: aliases, plugins, prompt | `nix/zsh.nix` | Yes |
+| Prompt theme | `zsh/oh-my-posh-catppuccin-mocha.omp.json` | Yes |
+| Neovim | `nvim/init.lua`, `nvim/lua/custom/plugins/` | Yes |
+| Non-secret env vars | `home.sessionVariables` in `nix/zsh.nix` | Yes |
+| **Secrets** | `~/.zshrc.local` | **No — never commit these** |
+| Git identity | Answer yes to prompt 6 in `setup-packages.sh`, or edit `nix/optional-packages.nix` | Config yes, your answer no |
 
-### Secrets (required after first run)
+### Secrets
 
-Secrets are never committed. Machine-local values go in `~/.zshrc.local`, which the managed zshrc sources last:
+Never put a real secret in a `.nix` file — they're world-readable in the Nix store. Put them in `~/.zshrc.local`, which the managed zshrc sources last:
 
-```
+```bash
 export PIPELINE_WORKER_GITHUB_TOKEN="github_pat_..."
 ```
 
-To add a new non-secret environment variable for good, add it to the `home.sessionVariables` block in `nix/zsh.nix` and re-run `./setup.sh`. To add a new secret, just export it in `~/.zshrc.local` and open a new terminal (or run `exec zsh`); no `setup.sh` run is needed since that file is sourced directly, not managed by Nix.
+That file isn't managed by Nix, so no `setup.sh` run is needed — just open a new terminal or run `exec zsh`.
 
-### Prompt
+---
 
-The zsh prompt is [oh-my-posh](https://ohmyposh.dev/), using its bundled `catppuccin_mocha.omp.json` theme (`nix/zsh.nix`) — matches tmux's `@catppuccin_flavor "mocha"` (`nix/tmux.nix`) and nvim's colorscheme.
-
-The theme file ships inside the pinned `oh-my-posh` Nix package itself, so it's reproducible across machines without vendoring a copy into this repo. To use a different bundled theme or flavor, point `--config` in `nix/zsh.nix` at another file under `${pkgs.oh-my-posh}/share/oh-my-posh/themes/` and re-run `./setup.sh`.
-### Not managed by Nix (by design)
-
-* **Claude Code, pi, and the other npm CLIs** (`pipeline-worker`, `gemini-cli`, `freebuff`, `mcp-sonar-analysis`, `@github/copilot`): these self-update and move fast, so activation bootstraps them via their native installers only when missing (claude to `~/.local/bin`, npm globals to `~/.npm-global`).
-* **Docker daemon**: a system service, manual install per <https://docs.docker.com/engine/install/>.
-
-## Making changes
-
-Configs are served read-only from the Nix store, so the workflow is: edit the file in this repo, then apply and commit. `setup.sh` is also the update command; re-running it is a no-op when nothing changed.
+## What's in here
 
 ```
-./setup.sh          # apply repo changes (wraps `home-manager switch --impure`)
-git add -A && git commit -m "..." && git push
+setup.sh              one entry point: install, apply, doctor, upgrade
+setup-packages.sh     interactive optional-package picker
+flake.nix             pinned inputs + all CI checks
+nix/                  one Home Manager module per concern (packages, zsh, git,
+                      nvim, tmux, alacritty, and one per agent)
+agents/               shared agent layer → ~/.agents
+                        AGENTS.md    global instructions, used by all 3 agents
+                        skills/      reusable agent skills
+                        boilerplats/ scaffold.js code generator + templates
+claude/               → ~/.claude (settings, hooks, statusline)
+copilot/              → ~/.copilot (hooks, generated instructions)
+pi/                   → ~/.pi (hook extension, sandbox extension)
+nvim/                 → ~/.config/nvim (kickstart.nvim)
+zsh/                  prompt theme + shell helpers sourced by nix/zsh.nix
+docker/               containerized workspace for each agent
 ```
 
-Every change is forced through Nix: the live files under `$HOME` are read-only store symlinks, and each `./setup.sh` run reverts anything that was replaced by hand (the hand-edited copy is kept as `*.hm-backup`). `--impure` is required because the flake reads `$USER` at eval time (see `flake.nix`) instead of hardcoding an account name. To audit without changing anything:
+**The agent layer is the interesting part.** `agents/AGENTS.md` is the single authored system prompt: Claude imports it, while Copilot's and Pi's instruction files are generated from it at build time so they can't drift. The safety hooks — blocking no-op edits, breaking retry loops, verifying new imports resolve, mandating the scaffold generator for boilerplate, replaying context across a compaction — are authored once in `claude/hooks/` and reused by all three. Copilot and Pi shell out to those same scripts through thin adapters rather than reimplementing them, so there is exactly one copy of each rule.
 
+### Containers
+
+Run any agent in an isolated container with only `/workspace` mounted:
+
+```bash
+cd docker && docker compose run --rm claude    # or: copilot, pi
 ```
-./setup.sh doctor   # verify every managed config still points into the Nix store; exit 1 on drift
-```
 
-Two deliberate exceptions:
+Credentials and session history persist in named volumes across runs.
 
-* **`~/.config/nvim`** points straight at `nvim/` in this checkout (LazyVim needs to write `lazy-lock.json` on `:Lazy update`), so nvim edits are live without a switch. `lazy-lock.json` is committed to pin plugin versions; run `:Lazy restore` on a new machine to match it.
-* **`~/.claude/settings.json`** is a writable copy, because Claude Code writes to it at runtime (permission grants, `/config`). Each switch refreshes it from the repo; if the live file had drifted, the old version is kept as `settings.json.hm-prev`. To keep runtime changes, copy them back into `claude/settings.json` before switching.
+---
 
-Updating pinned packages:
+## Not managed by Nix (on purpose)
 
-```
-./setup.sh upgrade  # nix flake update + apply (--impure); review and commit flake.lock
-```
+- **The agent CLIs** (Claude Code, Pi, Copilot CLI and other npm globals) self-update and move fast, so they're bootstrapped by their own installers only when missing — Claude into `~/.local/bin`, npm globals into `~/.npm-global`.
+- **The Docker daemon** is a system service: install it per <https://docs.docker.com/engine/install/>.
 
 ## Testing
 
-`nix flake check --impure` runs all CI gates locally: it builds the full home configuration, runs the Claude hook regression suite, and lints + tests `setup.sh` (shellcheck plus doctor drift-audit cases against a synthetic Home Manager profile). The hooks can also be exercised directly:
-
-```
-claude/hooks/test-hook.sh list                           # list hooks + what each does
-claude/hooks/test-hook.sh run pre-tool-use-edit-guard.sh # run with a built-in sample payload
-echo '{"...":"..."}' | claude/hooks/test-hook.sh run <hook.sh> -   # custom payload
-claude/hooks/test-hook.sh selftest                       # regression checks
+```bash
+nix flake check --impure    # everything CI runs
 ```
 
-Hook runtime state (session logs, loop counters, digests) lives under `~/.local/state/claude-hooks/`, never in this repo.
+Eight checks: the full home configuration evaluates; `setup.sh` is shellchecked and its drift audit exercised against a synthetic profile; the Claude, Copilot, and Pi hook suites run; `context-augment.py` and the feature-plan injector run their unit tests; and a parity check asserts the container images ship every hook the configs actually register. The boilerplate generator's suite needs the npm registry, so it runs as a separate CI job rather than inside the offline Nix sandbox.
+
+Individual hooks can be driven by hand:
+
+```bash
+claude/hooks/test-hook.sh list          # every hook, its event, what it does
+claude/hooks/test-hook.sh selftest      # regression checks
+claude/hooks/test-hook.sh run pre-tool-use-edit-guard.sh   # with a sample payload
+```
+
+Hook runtime state (logs, loop counters, digests) lives in `~/.local/state/claude-hooks/`, never in this repo.
 
 ## WSL notes
 
-* Zed (the GUI editor) needs WSLg, which is standard on Windows 11.
-* `wslu` provides `wslview` for opening URLs and files in Windows.
+- Zed needs WSLg, standard on Windows 11.
+- `wslu` provides `wslview` for opening URLs and files on the Windows side.
