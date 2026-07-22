@@ -5,627 +5,355 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Feature Implementation Plan – {{FEATURE_TITLE}}</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root{
+            --bg:#0B0D10; --panel:#131619; --tree:#0E1013; --field:#0E1114; --line:#23272C;
+            --ink:#E4E7EB; --muted:#7C848D; --ink-strong:#FFFFFF;
+            --cyan:#22D3EE; --amber:#F5A524; --green:#3DD68C; --red:#FF6B6B;
+            --mono:'JetBrains Mono','IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
         }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #f8fafc;
-            color: #1e293b;
-            padding: 2rem 1.5rem;
-            max-width: 1200px;
-            margin: 0 auto;
-            line-height: 1.5;
+        *{ margin:0; padding:0; box-sizing:border-box; }
+        body{ font-family:var(--mono); background:var(--bg); color:var(--ink); font-size:13.5px; line-height:1.5; }
+
+        input, textarea, select{
+            width:100%; padding:.55rem .7rem; border:1px solid var(--line); border-radius:6px;
+            font-family:var(--mono); font-size:.85rem; background:var(--field); color:var(--ink);
         }
-        h1 {
-            font-size: 1.8rem;
-            margin-bottom: 0.25rem;
-            color: #0f172a;
-        }
-        .subtitle {
-            color: #64748b;
-            margin-bottom: 2rem;
-            font-size: 0.95rem;
-        }
-        .card {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-        }
-        .card h2 {
-            font-size: 1.2rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
-            color: #0f172a;
-            border-bottom: 1px solid #e2e8f0;
-            padding-bottom: 0.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            cursor: pointer;
-            user-select: none;
-        }
-        .card h2 .toggle-arrow {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            transition: transform 0.2s;
-            flex-shrink: 0;
-        }
-        .card h2 .toggle-arrow.collapsed {
-            transform: rotate(-90deg);
-        }
-        .card.collapsed {
-            padding-bottom: 0.5rem;
-        }
-        .card.collapsed > *:not(h2) {
-            display: none;
-        }
-        .card h3 {
-            font-size: 1rem;
-            font-weight: 600;
-            margin: 1.5rem 0 0.5rem 0;
-            color: #1e293b;
-        }
-        label {
-            font-weight: 500;
-            display: block;
-            margin-bottom: 0.3rem;
-            font-size: 0.9rem;
-            color: #334155;
-        }
-        input,
-        textarea,
-        select {
-            width: 100%;
-            padding: 0.5rem;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            font-family: 'Courier New', monospace;
-            font-size: 0.9rem;
-            background: #fff;
-        }
-        input:focus,
-        textarea:focus,
-        select:focus {
-            outline: 2px solid #2563eb;
-            outline-offset: 1px;
-        }
-        textarea {
-            resize: vertical;
-            font-family: 'Courier New', monospace;
-        }
-        .flex-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.75rem;
-            align-items: center;
-        }
-        .mt-1 {
-            margin-top: 0.75rem;
-        }
-        .mt-2 {
-            margin-top: 1.5rem;
-        }
-        .text-muted {
-            color: #64748b;
-        }
-        .text-small {
-            font-size: 0.85rem;
+        input:focus, textarea:focus, select:focus{ outline:2px solid var(--cyan); outline-offset:1px; }
+        textarea{ resize:vertical; }
+        label{ font-weight:600; display:block; margin-bottom:.3rem; font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+
+        .flex-row{ display:flex; flex-wrap:wrap; gap:.75rem; align-items:flex-start; }
+        .mt-1{ margin-top:.75rem; } .mt-2{ margin-top:1.5rem; }
+        .text-muted{ color:var(--muted); } .text-small{ font-size:.8rem; }
+
+        .btn{ background:#1A1E22; border:1px solid var(--line); padding:.45rem 1rem; border-radius:6px; font-size:.8rem; font-weight:600; cursor:pointer; color:var(--ink); font-family:var(--mono); display:inline-flex; align-items:center; gap:.35rem; transition:.15s; }
+        .btn:hover{ background:#20242A; }
+        .btn-primary{ background:var(--cyan); border-color:var(--cyan); color:#00272E; }
+        .btn-primary:hover{ opacity:.9; }
+        .btn-primary.copied{ background:var(--green); border-color:var(--green); }
+        .btn-danger{ background:#3A1414; border-color:#5A1E1E; color:var(--red); }
+        .btn-danger:hover{ background:#4A1A1A; }
+        .btn-outline{ background:transparent; border:1px dashed var(--cyan); color:var(--cyan); }
+        .btn-outline:hover{ background:rgba(34,211,238,.08); }
+        .btn-sm{ padding:.2rem .6rem; font-size:.72rem; }
+        .btn-block{ width:100%; justify-content:center; }
+
+        .item-block{ border:1px solid var(--line); border-radius:8px; padding:1rem; margin-bottom:.9rem; background:var(--field); }
+        .item-header{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.5rem; margin-bottom:.6rem; }
+        .item-header .item-title{ font-weight:700; font-size:.88rem; flex:1; color:var(--ink-strong); display:flex; align-items:center; gap:.4rem; }
+        .item-fields{ display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
+        .item-fields .full-width{ grid-column:1 / -1; }
+        .item-fields label{ font-size:.68rem; margin-bottom:.2rem; }
+        @media (max-width:700px){
+            .item-fields{ grid-template-columns:1fr; }
+            .item-fields .full-width{ grid-column:1; }
         }
 
-        .btn {
-            background: #f1f5f9;
-            border: 1px solid #d1d5db;
-            padding: 0.4rem 1rem;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: 0.15s;
-            color: #1e293b;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.3rem;
-        }
-        .btn:hover {
-            background: #e2e8f0;
-        }
-        .btn-primary {
-            background: #2563eb;
-            border-color: #2563eb;
-            color: white;
-        }
-        .btn-primary:hover {
-            background: #1d4ed8;
-        }
-        .btn-danger {
-            background: #ef4444;
-            border-color: #ef4444;
-            color: white;
-        }
-        .btn-danger:hover {
-            background: #dc2626;
-        }
-        .btn-success {
-            background: #16a34a;
-            border-color: #16a34a;
-            color: white;
-        }
-        .btn-success:hover {
-            background: #15803d;
-        }
-        .btn-outline {
-            background: transparent;
-            border: 1px dashed #2563eb;
-            color: #2563eb;
-        }
-        .btn-outline:hover {
-            background: #eff6ff;
-        }
-        .btn-sm {
-            padding: 0.2rem 0.6rem;
-            font-size: 0.8rem;
-        }
-        .btn-block {
-            width: 100%;
-            justify-content: center;
+        .qa-table{ width:100%; border-collapse:collapse; font-size:.85rem; }
+        .qa-table th{ background:var(--field); text-align:left; padding:.5rem .7rem; font-weight:700; border-bottom:2px solid var(--line); color:var(--muted); font-size:.65rem; text-transform:uppercase; letter-spacing:.04em; }
+        .qa-table td{ padding:.55rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+        .qa-table .opts-cell{ white-space:pre-line; color:var(--muted); font-size:.8rem; max-width:220px; }
+        .decision-input{ width:100%; }
+
+        .approach-block{ margin-bottom:1.25rem; padding-bottom:1.25rem; border-bottom:1px solid var(--line); }
+        .approach-block:last-child{ border:none; margin:0; padding:0; }
+        .approach-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem; gap:1rem; }
+        .approach-title{ margin:0; font-size:.9rem; font-weight:700; color:var(--ink-strong); }
+        .approach-rationale{ color:var(--ink); opacity:.85; line-height:1.7; margin:.4rem 0 0; white-space:pre-wrap; font-size:.86rem; }
+
+        .badge{ display:inline-block; padding:.1rem .5rem; border-radius:4px; font-size:.6rem; font-weight:700; text-transform:uppercase; }
+        .badge-create{ background:#0E2F2A; color:var(--green); }
+        .badge-update{ background:#3A2A0C; color:var(--amber); }
+        .badge-delete{ background:#3A1414; color:var(--red); }
+
+        /* ---- shell layout: left tree nav + scrollable main + pinned cmdbar ---- */
+        .shell{ display:grid; grid-template-columns:260px 1fr; height:100vh; overflow:hidden; }
+        .tree{ background:var(--tree); border-right:1px solid var(--line); overflow-y:auto; display:flex; flex-direction:column; }
+        .tree-brand{ padding:1rem 1rem .8rem; border-bottom:1px solid var(--line); }
+        .tree-brand .name{ color:var(--ink-strong); font-weight:700; font-size:.9rem; word-break:break-word; }
+        .tree-brand .meta{ color:var(--muted); font-size:.68rem; margin-top:.25rem; }
+        .tree-group{ padding:.9rem 1rem .3rem; font-size:.6rem; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:700; }
+        .tnode{ display:flex; align-items:center; gap:.5rem; padding:.4rem 1rem; font-size:.8rem; cursor:pointer; color:#C7CDD3; text-decoration:none; border:none; background:none; width:100%; text-align:left; font-family:var(--mono); }
+        .tnode:hover{ background:#171B1F; }
+        .tnode.active{ background:#181C21; box-shadow:inset 3px 0 0 var(--cyan); color:var(--ink-strong); }
+        .tnode .flag{ margin-left:auto; font-size:.6rem; font-weight:700; padding:.05rem .4rem; border-radius:8px; background:#3A2A0C; color:var(--amber); }
+        .fileleaf{ padding-left:1.7rem; font-size:.74rem; }
+        .fileleaf .badge{ padding:.05rem .3rem; }
+        .tree-foot{ margin-top:auto; padding:.75rem 1rem; border-top:1px solid var(--line); font-size:.66rem; color:var(--muted); display:flex; align-items:center; gap:.4rem; }
+        .tree-foot .dot{ width:6px; height:6px; border-radius:50%; background:var(--green); flex-shrink:0; }
+        .tree-foot .dot.warn{ background:var(--amber); }
+
+        .main{ min-width:0; display:flex; flex-direction:column; height:100vh; overflow:hidden; }
+        .scroll-area{ overflow-y:auto; flex:1; }
+        .wrap{ max-width:820px; margin:0 auto; padding:1.75rem 1.5rem 3rem; width:100%; }
+        .topline{ display:flex; align-items:center; justify-content:space-between; color:var(--muted); font-size:.72rem; margin-bottom:1.1rem; gap:.75rem; }
+        .topline b{ color:var(--ink-strong); }
+        #nav-toggle-btn{ display:none; }
+
+        h1{ font-size:1.3rem; margin:0 0 .35rem; color:var(--ink-strong); letter-spacing:-.01em; font-weight:700; }
+        .sub{ color:var(--muted); font-size:.82rem; margin-bottom:1.75rem; line-height:1.6; max-width:640px; }
+
+        .stat-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:.7rem; margin-bottom:1.5rem; }
+        .stat{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:.85rem .9rem; }
+        .stat .n{ font-size:1.4rem; font-weight:700; color:var(--ink-strong); }
+        .stat .n.amber{ color:var(--amber); }
+        .stat .l{ color:var(--muted); font-size:.62rem; text-transform:uppercase; letter-spacing:.04em; margin-top:.2rem; }
+
+        .alert{ background:#241A0C; border:1px solid #4A3413; color:var(--amber); border-radius:8px; padding:.7rem 1rem; font-size:.8rem; margin-bottom:1.5rem; display:flex; gap:.55rem; align-items:center; }
+
+        .pipeline{ margin-bottom:2rem; }
+        .pipeline h2{ font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; margin-bottom:.8rem; }
+        .pipe-row{ display:flex; align-items:stretch; gap:0; overflow-x:auto; padding-bottom:.5rem; }
+        .pipe-node{ flex:0 0 170px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:.7rem; margin-right:1.1rem; position:relative; cursor:pointer; transition:.15s; }
+        .pipe-node:hover{ border-color:var(--cyan); }
+        .pipe-node:not(:last-child)::after{ content:'→'; position:absolute; right:-1.35rem; top:50%; transform:translateY(-50%); color:var(--muted); }
+        .pipe-node .order{ color:var(--muted); font-size:.62rem; }
+        .pipe-node .path{ font-size:.72rem; color:var(--ink-strong); word-break:break-all; margin-top:.35rem; }
+        .pipe-node .badge{ margin-top:.3rem; display:inline-block; }
+
+        .section{ background:var(--panel); border:1px solid var(--line); border-radius:8px; margin-bottom:1rem; overflow:hidden; scroll-margin-top:1.25rem; }
+        .section-head{ display:flex; align-items:center; gap:.5rem; padding:.75rem 1rem; cursor:pointer; font-size:.86rem; margin:0; font-weight:700; color:var(--ink-strong); user-select:none; }
+        .section-head:hover{ background:#171B1F; }
+        .section-head .toggle-arrow{ display:inline-block; width:16px; transition:transform .2s; flex-shrink:0; color:var(--muted); font-size:.75rem; }
+        .section-head .toggle-arrow.collapsed{ transform:rotate(-90deg); }
+        .section.collapsed .section-body, .section.collapsed .section-desc{ display:none; }
+        .section.collapsed{ padding-bottom:0; }
+        .section-desc{ color:var(--muted); font-size:.78rem; padding:0 1rem 1rem; margin-top:-.4rem; line-height:1.55; }
+        .section-body{ padding:0 1rem 1.1rem; }
+        .section h3{ font-size:.82rem; font-weight:700; margin:1.2rem 0 .5rem; color:var(--ink-strong); }
+        .section-header-actions{ display:none; gap:.3rem; margin-left:auto; }
+        .section-head:hover .section-header-actions{ display:flex; }
+        .comment-btn{ padding:.2rem .5rem; background:rgba(34,211,238,.1); border:1px solid var(--cyan); color:var(--cyan); border-radius:4px; cursor:pointer; font-size:.66rem; font-weight:700; }
+        .comment-btn:hover{ background:rgba(34,211,238,.2); }
+
+        .cmdbar{ flex-shrink:0; background:var(--panel); border-top:1px solid var(--line); padding:.75rem 1.5rem; display:flex; gap:.75rem; align-items:center; }
+        .cmdbar .prompt{ color:var(--green); }
+        .cmdbar .spacer{ flex:1; }
+        .cmdbar .hint{ color:var(--muted); font-size:.72rem; }
+
+        @media (max-width:900px){
+            .shell{ grid-template-columns:1fr; }
+            .tree{ position:fixed; z-index:50; top:0; left:0; width:260px; height:100vh; transform:translateX(-100%); transition:transform .25s ease; box-shadow:2px 0 16px rgba(0,0,0,.5); }
+            .tree.open{ transform:translateX(0); }
+            #nav-toggle-btn{ display:inline-flex; }
+            .stat-row{ grid-template-columns:1fr 1fr; }
         }
 
-        .item-block {
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            background: #fafcfc;
+        /* ---- side panel: comments / AI chat ---- */
+        .side-panel{
+            position:fixed; right:0; top:0; width:340px; height:100vh; background:var(--panel);
+            border-left:1px solid var(--line); box-shadow:-2px 0 12px rgba(0,0,0,.4); z-index:1000;
+            display:flex; flex-direction:column; transform:translateX(100%); transition:transform .3s ease;
+            font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color:var(--ink);
         }
-        .item-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-            margin-bottom: 0.5rem;
-        }
-        .item-header .item-title {
-            font-weight: 600;
-            font-size: 1rem;
-            flex: 1;
-        }
-        .item-fields {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.5rem;
-        }
-        .item-fields .full-width {
-            grid-column: 1 / -1;
-        }
-        .item-fields label {
-            font-size: 0.8rem;
-            margin-bottom: 0.1rem;
-            color: #475569;
-        }
-        .pseudo-code {
-            background: #f1f5f9;
-            padding: 0.5rem;
-            border-radius: 4px;
-            font-family: 'Courier New', monospace;
-            font-size: 0.85rem;
-            white-space: pre-wrap;
-            border: 1px solid #e2e8f0;
-            min-height: 3rem;
-        }
-        @media (max-width:700px) {
-            .item-fields {
-                grid-template-columns: 1fr;
-            }
-            .item-fields .full-width {
-                grid-column: 1;
-            }
-        }
-
-        .table-wrap {
-            overflow-x: auto;
-            margin: 1rem 0;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.9rem;
-        }
-        th {
-            background: #f1f5f9;
-            text-align: left;
-            padding: 0.5rem 0.8rem;
-            font-weight: 600;
-            border-bottom: 2px solid #e2e8f0;
-        }
-        td {
-            padding: 0.5rem 0.8rem;
-            border-bottom: 1px solid #e2e8f0;
-            vertical-align: top;
-        }
-        td textarea, td input {
-            width: 100%;
-            max-width: 100%;
-        }
-
-        /* Paragraph-style sections */
-        .paragraph-section {
-            line-height: 1.6;
-            color: #334155;
-        }
-        .paragraph-section p {
-            margin-bottom: 1rem;
-        }
-        .paragraph-section .edit-btn {
-            display: inline-block;
-            padding: 0.25rem 0.6rem;
-            background: #f1f5f9;
-            border: 1px solid #cbd5e1;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            cursor: pointer;
-            margin-left: 1rem;
-        }
-        .paragraph-section .edit-btn:hover {
-            background: #e2e8f0;
-        }
-        .paragraph-section.editing textarea {
-            width: 100%;
-            padding: 0.5rem;
-            border: 1px solid #2563eb;
-            border-radius: 6px;
-            font-family: inherit;
-            resize: vertical;
-        }
-        .paragraph-section.editing .edit-actions {
-            margin-top: 0.5rem;
-            display: flex;
-            gap: 0.5rem;
-        }
-        .paragraph-section.editing button {
-            padding: 0.3rem 0.8rem;
-            font-size: 0.85rem;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: 500;
-        }
-        .paragraph-section.editing .save-btn {
-            background: #16a34a;
-            color: white;
-        }
-        .paragraph-section.editing .cancel-btn {
-            background: #f1f5f9;
-            color: #334155;
-            border: 1px solid #cbd5e1;
-        }
-
-        .approval-gate {
-            background: #f0fdf4;
-            border-left: 4px solid #16a34a;
-            padding: 1rem 1.5rem;
-            border-radius: 8px;
-            color: #166534;
-            font-weight: 500;
-        }
-
-        #copy-btn {
-            background: #2563eb;
-            color: white;
-            border: none;
-            padding: 0.6rem 1.2rem;
-            border-radius: 8px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: 0.15s;
-        }
-        #copy-btn:hover {
-            opacity: 0.9;
-        }
-        #copy-btn.copied {
-            background: #16a34a;
-        }
-        .badge {
-            display: inline-block;
-            padding: 0.1rem 0.5rem;
-            border-radius: 12px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-        .badge-create {
-            background: #dbeafe;
-            color: #1d4ed8;
-        }
-        .badge-update {
-            background: #fef3c7;
-            color: #b45309;
-        }
-        .badge-delete {
-            background: #fee2e2;
-            color: #b91c1c;
-        }
-
-        /* Side panel for comments */
-        .side-panel {
-            position: fixed;
-            right: 0;
-            top: 0;
-            width: 340px;
-            height: 100vh;
-            background: #ffffff;
-            border-left: 1px solid #e2e8f0;
-            box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            transform: translateX(100%);
-            transition: transform 0.3s ease;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        }
-        .side-panel.open {
-            transform: translateX(0);
-        }
-        .panel-header {
-            padding: 1rem;
-            border-bottom: 1px solid #e2e8f0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .panel-header h3 {
-            margin: 0;
-            font-size: 1rem;
-            color: #0f172a;
-        }
-        .close-btn {
-            background: none;
-            border: none;
-            font-size: 1.5rem;
-            cursor: pointer;
-            color: #64748b;
-            padding: 0;
-        }
-        .close-btn:hover {
-            color: #1e293b;
-        }
-        .comments-list {
-            flex: 1;
-            overflow-y: auto;
-            padding: 1rem;
-        }
-        .comment-item {
-            margin-bottom: 1rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid #f1f5f9;
-        }
-        .comment-item:last-child {
-            border-bottom: none;
-        }
-        .comment-author {
-            font-weight: 600;
-            font-size: 0.85rem;
-            color: #0f172a;
-        }
-        .comment-time {
-            font-size: 0.75rem;
-            color: #94a3b8;
-            margin-left: 0.5rem;
-        }
-        .comment-text {
-            font-size: 0.9rem;
-            color: #475569;
-            margin-top: 0.3rem;
-            word-wrap: break-word;
-        }
-        .comment-ai-response {
-            background: #f0f4f8;
-            padding: 0.75rem;
-            border-radius: 6px;
-            margin-top: 0.5rem;
-            font-size: 0.85rem;
-            color: #334155;
-        }
-        .comment-input {
-            padding: 1rem;
-            border-top: 1px solid #e2e8f0;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-        .comment-input textarea {
-            resize: none;
-            font-family: inherit;
-            font-size: 0.85rem;
-            height: 60px;
-            padding: 0.5rem;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-        }
-        .comment-input button {
-            padding: 0.4rem 0.8rem;
-            background: #2563eb;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            font-weight: 500;
-        }
-        .comment-input button:hover {
-            background: #1d4ed8;
-        }
-        .comment-input button:disabled {
-            background: #cbd5e1;
-            cursor: not-allowed;
-        }
-        .section-header-actions {
-            display: none;
-            gap: 0.3rem;
-        }
-        .card h2:hover .section-header-actions {
-            display: flex;
-        }
-        .comment-btn {
-            padding: 0.2rem 0.5rem;
-            background: #eff6ff;
-            border: 1px solid #2563eb;
-            color: #2563eb;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.75rem;
-            font-weight: 500;
-        }
-        .comment-btn:hover {
-            background: #dbeafe;
-        }
-        .offline-message {
-            background: #fef3c7;
-            border: 1px solid #f59e0b;
-            color: #92400e;
-            padding: 0.75rem;
-            border-radius: 4px;
-            font-size: 0.85rem;
-            margin-bottom: 1rem;
-        }
-        .connection-status {
-            font-size: 0.75rem;
-            padding: 0.5rem;
-            text-align: center;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        .connection-status.connected {
-            background: #f0fdf4;
-            color: #166534;
-        }
-        .connection-status.disconnected {
-            background: #fef2f2;
-            color: #b91c1c;
-        }
+        .side-panel.open{ transform:translateX(0); }
+        .panel-header{ padding:1rem; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
+        .panel-header h3{ margin:0; font-size:.95rem; color:var(--ink-strong); }
+        .close-btn{ background:none; border:none; font-size:1.4rem; cursor:pointer; color:var(--muted); padding:0; }
+        .close-btn:hover{ color:var(--ink-strong); }
+        .comments-list{ flex:1; overflow-y:auto; padding:1rem; }
+        .comment-item{ margin-bottom:1rem; padding-bottom:1rem; border-bottom:1px solid var(--line); }
+        .comment-item:last-child{ border-bottom:none; }
+        .comment-author{ font-weight:700; font-size:.82rem; color:var(--ink-strong); }
+        .comment-time{ font-size:.7rem; color:var(--muted); margin-left:.5rem; }
+        .comment-text{ font-size:.85rem; color:var(--ink); opacity:.9; margin-top:.3rem; word-wrap:break-word; }
+        .comment-ai-response{ background:var(--field); border:1px solid var(--line); padding:.7rem; border-radius:6px; margin-top:.5rem; font-size:.8rem; color:var(--ink); }
+        .comment-input{ padding:1rem; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:.5rem; }
+        .comment-input textarea{ resize:none; font-family:inherit; font-size:.82rem; height:60px; padding:.5rem; border:1px solid var(--line); border-radius:5px; background:var(--field); color:var(--ink); }
+        .comment-input button{ padding:.4rem .8rem; background:var(--cyan); color:#00272E; border:none; border-radius:5px; cursor:pointer; font-size:.82rem; font-weight:700; }
+        .comment-input button:hover{ opacity:.9; }
+        .comment-input button:disabled{ background:#2A2D31; color:var(--muted); cursor:not-allowed; }
+        .offline-message{ background:#241A0C; border:1px solid #4A3413; color:var(--amber); padding:.7rem; border-radius:5px; font-size:.8rem; margin-bottom:1rem; }
+        .connection-status{ font-size:.7rem; padding:.5rem; text-align:center; border-bottom:1px solid var(--line); }
+        .connection-status.connected{ background:#0E2F2A; color:var(--green); }
+        .connection-status.disconnected{ background:#3A1414; color:var(--red); }
     </style>
 </head>
 <body>
 
-    <h1>⚙️ Feature Implementation Plan – {{FEATURE_TITLE}}</h1>
-    <p class="subtitle">File-by-file plan for building a feature inside an existing codebase — co-authored: the AI drafts, the human decides. <br>Resolve open questions, edit any section, then copy the plan back; human edits are tagged in the export and override the AI draft.</p>
+    <div class="shell">
+        <nav class="tree" id="tree-nav">
+            <div class="tree-brand">
+                <div class="name" id="tree-brand-name">Untitled Feature</div>
+                <div class="meta" id="tree-brand-meta">featurePlan</div>
+            </div>
 
-    <!-- OVERVIEW -->
-    <div class="card">
-        <h2>📌 Feature Overview</h2>
-        <div class="flex-row">
-            <div style="flex:2;"><label>Feature Title</label><input id="feature-title" placeholder="e.g. Add two-factor authentication" /></div>
-            <div style="flex:1;"><label>Target Module / Context</label><input id="feature-module" placeholder="e.g. User Service" /></div>
+            <div class="tree-group">Review</div>
+            <button class="tnode" data-target="#overview-section">Overview</button>
+            <button class="tnode" data-target="#questions-section">Open Questions<span class="flag" id="nav-questions-flag" style="display:none;"></span></button>
+            <button class="tnode" data-target="#acceptance-section">Acceptance Criteria</button>
+            <button class="tnode" data-target="#patterns-section">Design Patterns</button>
+            <button class="tnode" data-target="#approach-section">Solution Approach</button>
+
+            <div class="tree-group">Build pipeline</div>
+            <button class="tnode" data-target="#folder-section">Folder Structure</button>
+            <div id="tree-files"></div>
+
+            <div class="tree-group">Reference</div>
+            <button class="tnode" data-target="#logic-section">Logic Steps</button>
+            <button class="tnode" data-target="#contracts-section">Contracts</button>
+            <button class="tnode" data-target="#edges-section">Edge Cases</button>
+            <button class="tnode" data-target="#tests-section">Tests</button>
+
+            <div class="tree-foot"><span class="dot" id="tree-foot-dot"></span><span id="tree-foot-text">No open questions</span></div>
+        </nav>
+
+        <div class="main">
+            <div class="scroll-area">
+                <div class="wrap">
+                    <div class="topline">
+                        <span><button id="nav-toggle-btn" class="btn btn-sm">☰</button> featurePlan · <b id="topline-file">plan.html</b></span>
+                        <span id="topline-module"></span>
+                    </div>
+
+                    <h1>⚙️ Feature Implementation Plan – {{FEATURE_TITLE}}</h1>
+                    <p class="sub">File-by-file plan for building a feature inside an existing codebase — co-authored: the AI drafts, the human decides. Resolve open questions, edit any section, then copy the plan back; human edits are tagged in the export and override the AI draft.</p>
+
+                    <div class="alert" id="alert-banner" style="display:none;"></div>
+
+                    <div class="stat-row">
+                        <div class="stat"><div class="n amber" id="stat-unresolved">0</div><div class="l">Unresolved Qs</div></div>
+                        <div class="stat"><div class="n" id="stat-criteria">0</div><div class="l">Acceptance Criteria</div></div>
+                        <div class="stat"><div class="n" id="stat-files">0</div><div class="l" id="stat-files-label">Files</div></div>
+                        <div class="stat"><div class="n" id="stat-edges">0</div><div class="l">Edge Cases</div></div>
+                    </div>
+
+                    <div class="pipeline" id="files-pipeline-wrap">
+                        <h2>Build Pipeline — file manifest, in execution order</h2>
+                        <div class="pipe-row" id="pipeline-row"></div>
+                    </div>
+
+                    <!-- OVERVIEW -->
+                    <div class="section" id="overview-section">
+                        <h2 class="section-head">📌 Feature Overview</h2>
+                        <div class="section-body">
+                            <div class="flex-row">
+                                <div style="flex:2;"><label>Feature Title</label><input id="feature-title" placeholder="e.g. Add two-factor authentication" /></div>
+                                <div style="flex:1;"><label>Target Module / Context</label><input id="feature-module" placeholder="e.g. User Service" /></div>
+                            </div>
+                            <div class="mt-1"><label>Captured Intent (the user's original ask, verbatim, plus what was inferred from it)</label><textarea id="feature-intent" rows="2" placeholder="e.g. User asked: 'add 2FA to login'. Inferred: TOTP second factor verified at login; enrollment managed from the profile page."></textarea></div>
+                            <div class="mt-1"><label>User Story / Goal</label><textarea id="feature-goal" rows="2" placeholder="As a user, I want to ... so that ..."></textarea></div>
+                            <div class="mt-1"><label>Existing Codebase Context (files, classes, DB schemas that already exist)</label><textarea id="feature-context" rows="2" placeholder="e.g. We already have User.php, AuthService.php, and a 'users' table with columns..."></textarea></div>
+                        </div>
+                    </div>
+
+                    <!-- OPEN QUESTIONS & DECISIONS -->
+                    <div class="section" id="questions-section">
+                        <h2 class="section-head">❓ Open Questions & Decisions</h2>
+                        <p class="section-desc">Ambiguities the AI could not resolve from the ask or the code. <strong>The human decides here.</strong> An empty Decision exports as UNRESOLVED and blocks implementation.</p>
+                        <div class="section-body">
+                            <div id="questions-container"></div>
+                            <button id="add-question-btn" class="btn btn-outline btn-block mt-1">＋ Add open question</button>
+                        </div>
+                    </div>
+
+                    <!-- ACCEPTANCE CRITERIA -->
+                    <div class="section" id="acceptance-section">
+                        <h2 class="section-head">✅ Acceptance Criteria</h2>
+                        <p class="section-desc">Testable conditions that define "done". Each criterion states an expected behaviour and how to verify it.</p>
+                        <div class="section-body">
+                            <div id="acceptance-container"></div>
+                            <button id="add-acceptance-btn" class="btn btn-outline btn-block mt-1">＋ Add acceptance criterion</button>
+                        </div>
+                    </div>
+
+                    <!-- DESIGN PATTERNS & OVERRIDES -->
+                    <div class="section" id="patterns-section">
+                        <h2 class="section-head">🧩 Design Patterns & Architectural Overrides</h2>
+                        <p class="section-desc">Explicitly state which patterns to use. <strong>Change these to alter the architecture</strong> (e.g., switch from Repository to Service Layer).</p>
+                        <div class="section-body">
+                            <div class="flex-row">
+                                <div style="flex:1;"><label>Core Pattern</label><input id="pattern-core" placeholder="e.g. MVC, Layered Architecture" value="Layered (Controller -> Service -> Repository)" /></div>
+                                <div style="flex:1;"><label>Business Logic Pattern</label><input id="pattern-business" placeholder="e.g. Transaction Script, Domain Model" value="Transaction Script" /></div>
+                            </div>
+                            <div class="mt-1"><label>Specific Pattern Implementations (e.g., Factory vs Builder, Repository vs DAO)</label>
+                                <textarea id="pattern-specific" rows="2" placeholder="e.g. Use Repository pattern for User data. Use Factory pattern to create complex DTOs."></textarea>
+                            </div>
+                            <div class="mt-1"><label>Explicit Overrides / Constraints (Change these to deviate from standard patterns)</label>
+                                <textarea id="pattern-overrides" rows="2" placeholder="e.g. Do NOT create a separate Repository for this; put logic directly in Service. Use Singleton for CacheManager."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SOLUTION APPROACH -->
+                    <div class="section" id="approach-section">
+                        <h2 class="section-head">💡 Solution Approach & Rationale</h2>
+                        <p class="section-desc">Explain the high-level design decisions, trade-offs, and rationale before diving into implementation. This section helps reviewers understand the "why" before the "what".</p>
+                        <div class="section-body">
+                            <div id="approach-container"></div>
+                            <button id="add-approach-btn" class="btn btn-outline btn-block mt-1">＋ Add design decision</button>
+                        </div>
+                    </div>
+
+                    <!-- RESULTING FOLDER STRUCTURE -->
+                    <div class="section" id="folder-section">
+                        <h2 class="section-head">🌳 Resulting Folder Structure</h2>
+                        <p class="section-desc">Tree of the affected directories after the change. Mark every touched file <strong>[CREATE]</strong>, <strong>[UPDATE]</strong>, or <strong>[DELETE]</strong>; must match the file manifest below.</p>
+                        <div class="section-body">
+                            <textarea id="folder-structure" rows="8" placeholder="src/&#10;├── Auth/&#10;│   └── AuthService.php    [UPDATE]&#10;└── Security/&#10;    └── TotpService.php    [CREATE]"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- FILE MANIFEST -->
+                    <div class="section" id="files-section">
+                        <h2 class="section-head">📂 File Change Manifest (In Order of Execution)</h2>
+                        <p class="section-desc">List every file that needs to be created, updated, or deleted. Order them by build sequence. Add pseudo-code for each.</p>
+                        <div class="section-body">
+                            <div id="files-container"></div>
+                            <button id="add-file-btn" class="btn btn-outline btn-block mt-1">＋ Add file to manifest</button>
+                        </div>
+                    </div>
+
+                    <!-- CORE BUSINESS LOGIC -->
+                    <div class="section" id="logic-section">
+                        <h2 class="section-head">🧠 Core Business Logic (Detailed Pseudo-Code)</h2>
+                        <p class="section-desc">The main algorithm or orchestration of the feature. Write this in plain English + pseudo-code so an AI can translate it into actual code.</p>
+                        <div class="section-body">
+                            <div id="logic-container"></div>
+                            <button id="add-logic-btn" class="btn btn-outline btn-block mt-1">＋ Add logic step</button>
+                        </div>
+                    </div>
+
+                    <!-- API / FUNCTION CONTRACTS -->
+                    <div class="section" id="contracts-section">
+                        <h2 class="section-head">📡 Function / API Contracts</h2>
+                        <p class="section-desc">Inputs, outputs, signatures for the main entry points (Controllers, Event Handlers, CLI commands).</p>
+                        <div class="section-body">
+                            <div id="contracts-container"></div>
+                            <button id="add-contract-btn" class="btn btn-outline btn-block mt-1">＋ Add contract</button>
+                        </div>
+                    </div>
+
+                    <!-- EDGE CASES -->
+                    <div class="section" id="edges-section">
+                        <h2 class="section-head">🚨 Edge Cases & Error Handling</h2>
+                        <p class="section-desc">What happens when things go wrong? Specify validation rules, exceptions, and fallbacks.</p>
+                        <div class="section-body">
+                            <div id="edges-container"></div>
+                            <button id="add-edge-btn" class="btn btn-outline btn-block mt-1">＋ Add edge case</button>
+                        </div>
+                    </div>
+
+                    <!-- TESTING STRATEGY -->
+                    <div class="section" id="tests-section">
+                        <h2 class="section-head">🧪 Testing Strategy</h2>
+                        <p class="section-desc">Specific test scenarios per file or logic unit.</p>
+                        <div class="section-body">
+                            <div id="tests-container"></div>
+                            <button id="add-test-btn" class="btn btn-outline btn-block mt-1">＋ Add test scenario</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cmdbar">
+                <span class="prompt">$</span><span>plan --status</span>
+                <span class="spacer"></span>
+                <span class="hint">Copied text is a structured prompt for ChatGPT, Claude, or any coding AI.</span>
+                <button id="reset-btn" class="btn btn-danger">Reset all data</button>
+                <button id="copy-btn" class="btn btn-primary">📋 Copy AI-Ready Plan</button>
+            </div>
         </div>
-        <div class="mt-1"><label>Captured Intent (the user's original ask, verbatim, plus what was inferred from it)</label><textarea id="feature-intent" rows="2" placeholder="e.g. User asked: 'add 2FA to login'. Inferred: TOTP second factor verified at login; enrollment managed from the profile page."></textarea></div>
-        <div class="mt-1"><label>User Story / Goal</label><textarea id="feature-goal" rows="2" placeholder="As a user, I want to ... so that ..."></textarea></div>
-        <div class="mt-1"><label>Existing Codebase Context (files, classes, DB schemas that already exist)</label><textarea id="feature-context" rows="2" placeholder="e.g. We already have User.php, AuthService.php, and a 'users' table with columns..."></textarea></div>
-    </div>
-
-    <!-- OPEN QUESTIONS & DECISIONS -->
-    <div class="card">
-        <h2>❓ Open Questions & Decisions</h2>
-        <p class="text-muted text-small">Ambiguities the AI could not resolve from the ask or the code. <strong>The human decides here.</strong> An empty Decision exports as UNRESOLVED and blocks implementation.</p>
-        <div id="questions-container"></div>
-        <button id="add-question-btn" class="btn btn-outline btn-block mt-1">＋ Add open question</button>
-    </div>
-
-    <!-- ACCEPTANCE CRITERIA -->
-    <div class="card">
-        <h2>✅ Acceptance Criteria</h2>
-        <p class="text-muted text-small">Testable conditions that define "done". Each criterion states an expected behaviour and how to verify it.</p>
-        <div id="acceptance-container"></div>
-        <button id="add-acceptance-btn" class="btn btn-outline btn-block mt-1">＋ Add acceptance criterion</button>
-    </div>
-
-    <!-- DESIGN PATTERNS & OVERRIDES (Crucial for tweaking) -->
-    <div class="card">
-        <h2>🧩 Design Patterns & Architectural Overrides</h2>
-        <p class="text-muted text-small">Explicitly state which patterns to use. <strong>Change these to alter the architecture</strong> (e.g., switch from Repository to Service Layer).</p>
-        <div class="flex-row">
-            <div style="flex:1;"><label>Core Pattern</label><input id="pattern-core" placeholder="e.g. MVC, Layered Architecture" value="Layered (Controller -> Service -> Repository)" /></div>
-            <div style="flex:1;"><label>Business Logic Pattern</label><input id="pattern-business" placeholder="e.g. Transaction Script, Domain Model" value="Transaction Script" /></div>
-        </div>
-        <div class="mt-1"><label>Specific Pattern Implementations (e.g., Factory vs Builder, Repository vs DAO)</label>
-            <textarea id="pattern-specific" rows="2" placeholder="e.g. Use Repository pattern for User data. Use Factory pattern to create complex DTOs."></textarea>
-        </div>
-        <div class="mt-1"><label>Explicit Overrides / Constraints (Change these to deviate from standard patterns)</label>
-            <textarea id="pattern-overrides" rows="2" placeholder="e.g. Do NOT create a separate Repository for this; put logic directly in Service. Use Singleton for CacheManager."></textarea>
-        </div>
-    </div>
-
-    <!-- SOLUTION APPROACH (EXPLANATION) -->
-    <div class="card">
-        <h2>💡 Solution Approach & Rationale</h2>
-        <p class="text-muted text-small">Explain the high-level design decisions, trade-offs, and rationale before diving into implementation. This section helps reviewers understand the "why" before the "what".</p>
-        <div id="approach-container"></div>
-        <button id="add-approach-btn" class="btn btn-outline btn-block mt-1">＋ Add design decision</button>
-    </div>
-
-    <!-- RESULTING FOLDER STRUCTURE -->
-    <div class="card">
-        <h2>🌳 Resulting Folder Structure</h2>
-        <p class="text-muted text-small">Tree of the affected directories after the change. Mark every touched file <strong>[CREATE]</strong>, <strong>[UPDATE]</strong>, or <strong>[DELETE]</strong>; must match the file manifest below.</p>
-        <textarea id="folder-structure" rows="8" placeholder="src/&#10;├── Auth/&#10;│   └── AuthService.php    [UPDATE]&#10;└── Security/&#10;    └── TotpService.php    [CREATE]"></textarea>
-    </div>
-
-    <!-- FILE MANIFEST (ORDERED) -->
-    <div class="card">
-        <h2>📂 File Change Manifest (In Order of Execution)</h2>
-        <p class="text-muted text-small">List every file that needs to be created, updated, or deleted. Order them by build sequence. Add pseudo-code for each.</p>
-        <div id="files-container"></div>
-        <button id="add-file-btn" class="btn btn-outline btn-block mt-1">＋ Add file to manifest</button>
-    </div>
-
-    <!-- CORE BUSINESS LOGIC (PSEUDO-CODE) -->
-    <div class="card">
-        <h2>🧠 Core Business Logic (Detailed Pseudo-Code)</h2>
-        <p class="text-muted text-small">The main algorithm or orchestration of the feature. Write this in plain English + pseudo-code so an AI can translate it into actual code.</p>
-        <div id="logic-container"></div>
-        <button id="add-logic-btn" class="btn btn-outline btn-block mt-1">＋ Add logic step</button>
-    </div>
-
-    <!-- API / FUNCTION CONTRACTS -->
-    <div class="card">
-        <h2>📡 Function / API Contracts</h2>
-        <p class="text-muted text-small">Inputs, outputs, signatures for the main entry points (Controllers, Event Handlers, CLI commands).</p>
-        <div id="contracts-container"></div>
-        <button id="add-contract-btn" class="btn btn-outline btn-block mt-1">＋ Add contract</button>
-    </div>
-
-    <!-- EDGE CASES & ERROR HANDLING -->
-    <div class="card">
-        <h2>🚨 Edge Cases & Error Handling</h2>
-        <p class="text-muted text-small">What happens when things go wrong? Specify validation rules, exceptions, and fallbacks.</p>
-        <div id="edges-container"></div>
-        <button id="add-edge-btn" class="btn btn-outline btn-block mt-1">＋ Add edge case</button>
-    </div>
-
-    <!-- TESTING STRATEGY -->
-    <div class="card">
-        <h2>🧪 Testing Strategy</h2>
-        <p class="text-muted text-small">Specific test scenarios per file or logic unit.</p>
-        <div id="tests-container"></div>
-        <button id="add-test-btn" class="btn btn-outline btn-block mt-1">＋ Add test scenario</button>
-    </div>
-
-    <!-- EXPORT -->
-    <div class="card">
-        <h2>📋 Export & Execution</h2>
-        <div class="approval-gate">
-            <strong>✅ Ready to generate code when:</strong> every open question has a decision, the file manifest is ordered, and the human has reviewed each section. <span id="gate-questions"></span>
-        </div>
-        <div class="flex-row mt-1">
-            <button id="copy-btn">📋 Copy AI-Ready Plan</button>
-            <button id="reset-btn" class="btn btn-danger">Reset all data</button>
-        </div>
-        <p class="text-muted text-small mt-1">The copied text is a structured prompt perfect for ChatGPT, Claude, or any coding AI.</p>
     </div>
 
     <script>
@@ -743,12 +471,20 @@
             return data.openQuestions.filter(q => !(q.decision || '').trim());
         }
 
+        // Drives every "is the plan ready" surface: the top alert banner, the
+        // stat tiles, and the tree nav's unresolved flag + footer status.
         function updateGate() {
-            const el = document.getElementById('gate-questions');
-            if (!el) return;
+            const alertEl = document.getElementById('alert-banner');
+            if (!alertEl) return;
             const n = unresolvedQuestions().length;
-            el.textContent = data.openQuestions.length === 0 ? ''
-                : n ? `⚠ ${n} open question(s) unresolved.` : 'All open questions decided.';
+            if (data.openQuestions.length === 0 || n === 0) {
+                alertEl.style.display = 'none';
+            } else {
+                alertEl.style.display = '';
+                alertEl.textContent = `⚠ ${n} open question(s) unresolved — implementation is blocked until they're decided.`;
+            }
+            renderStats();
+            updateTreeStatus();
         }
 
         function generateId() {
@@ -770,35 +506,33 @@
 
             renderFeatureOverview();
             renderPatterns();
+            renderPipeline();
+            renderTreeFiles();
             addCollapseTogglesToCards();
             updateGate();
         }
 
         function addCollapseTogglesToCards() {
-            document.querySelectorAll('.card h2').forEach((h2) => {
-                // Remove existing arrow if present
-                const existing = h2.querySelector('.toggle-arrow');
+            document.querySelectorAll('.section .section-head').forEach((head) => {
+                const existing = head.querySelector('.toggle-arrow');
                 if (existing) existing.remove();
 
-                // Add new arrow
                 const arrow = document.createElement('span');
                 arrow.className = 'toggle-arrow';
                 arrow.innerHTML = '▼';
-                h2.insertBefore(arrow, h2.firstChild);
+                head.insertBefore(arrow, head.firstChild);
 
-                // Remove existing listener to avoid duplicates
-                const oldHandler = h2._collapseHandler;
-                if (oldHandler) h2.removeEventListener('click', oldHandler);
+                const oldHandler = head._collapseHandler;
+                if (oldHandler) head.removeEventListener('click', oldHandler);
 
-                // Add collapse/expand handler
                 const handler = (e) => {
                     e.preventDefault();
-                    const card = h2.closest('.card');
-                    card.classList.toggle('collapsed');
+                    const section = head.closest('.section');
+                    section.classList.toggle('collapsed');
                     arrow.classList.toggle('collapsed');
                 };
-                h2._collapseHandler = handler;
-                h2.addEventListener('click', handler);
+                head._collapseHandler = handler;
+                head.addEventListener('click', handler);
             });
         }
 
@@ -808,6 +542,11 @@
             document.getElementById('feature-intent').value = data.intent || '';
             document.getElementById('feature-goal').value = data.goal || '';
             document.getElementById('feature-context').value = data.context || '';
+
+            document.getElementById('topline-file').textContent = data.title || 'Untitled';
+            document.getElementById('topline-module').textContent = data.module || '';
+            document.getElementById('tree-brand-name').textContent = data.title || 'Untitled Feature';
+            document.getElementById('tree-brand-meta').textContent = (data.module || 'Module not set') + ' · featurePlan';
         }
 
         function renderPatterns() {
@@ -818,7 +557,118 @@
             document.getElementById('folder-structure').value = data.folderStructure || '';
         }
 
-        // Generic render for simple item lists (logic, contracts, edges, tests)
+        // Dashboard stat tiles: unresolved questions, acceptance criteria,
+        // file count (with a create/update/delete breakdown), edge cases.
+        function renderStats() {
+            document.getElementById('stat-unresolved').textContent = unresolvedQuestions().length;
+            document.getElementById('stat-criteria').textContent = data.acceptanceCriteria.length;
+            document.getElementById('stat-edges').textContent = data.edgeCases.length;
+
+            document.getElementById('stat-files').textContent = data.files.length;
+            const counts = { create: 0, update: 0, delete: 0 };
+            data.files.forEach(f => { counts[f.action || 'update'] = (counts[f.action || 'update'] || 0) + 1; });
+            const parts = [];
+            if (counts.create) parts.push(counts.create + ' create');
+            if (counts.update) parts.push(counts.update + ' update');
+            if (counts.delete) parts.push(counts.delete + ' delete');
+            document.getElementById('stat-files-label').textContent = 'Files' + (parts.length ? ' (' + parts.join(' · ') + ')' : '');
+        }
+
+        // Horizontal build-pipeline strip above the sections: a read-only,
+        // click-to-jump summary of the file manifest in execution order.
+        function renderPipeline() {
+            const wrap = document.getElementById('files-pipeline-wrap');
+            const row = document.getElementById('pipeline-row');
+            row.innerHTML = '';
+            const sorted = [...data.files].sort((a, b) => (a.order || 999) - (b.order || 999));
+            if (sorted.length === 0) {
+                wrap.style.display = 'none';
+                return;
+            }
+            wrap.style.display = '';
+            sorted.forEach((f, idx) => {
+                const node = document.createElement('div');
+                node.className = 'pipe-node';
+
+                const order = document.createElement('div');
+                order.className = 'order';
+                order.textContent = `STEP ${idx + 1}`;
+                node.appendChild(order);
+
+                const badge = document.createElement('span');
+                const action = f.action || 'update';
+                badge.className = `badge badge-${action}`;
+                badge.textContent = action;
+                node.appendChild(badge);
+
+                const path = document.createElement('div');
+                path.className = 'path';
+                path.textContent = f.path || 'Untitled file';
+                node.appendChild(path);
+
+                node.addEventListener('click', () => navigateTo('#files-section', null));
+                row.appendChild(node);
+            });
+        }
+
+        // Dynamic leaf nodes in the tree nav's "Build pipeline" group — one
+        // per manifest file, in build order, all jumping to the manifest.
+        function renderTreeFiles() {
+            const container = document.getElementById('tree-files');
+            container.innerHTML = '';
+            const sorted = [...data.files].sort((a, b) => (a.order || 999) - (b.order || 999));
+            sorted.forEach(f => {
+                const item = document.createElement('button');
+                item.className = 'tnode fileleaf';
+                item.dataset.target = '#files-section';
+
+                const badge = document.createElement('span');
+                const action = f.action || 'update';
+                badge.className = `badge badge-${action}`;
+                badge.textContent = action.charAt(0).toUpperCase();
+                item.appendChild(badge);
+                item.appendChild(document.createTextNode(f.path || 'Untitled file'));
+
+                item.addEventListener('click', () => navigateTo('#files-section', item));
+                container.appendChild(item);
+            });
+        }
+
+        // Unresolved-question flag on the nav item + the footer status line.
+        function updateTreeStatus() {
+            const n = unresolvedQuestions().length;
+            const flag = document.getElementById('nav-questions-flag');
+            if (n > 0) {
+                flag.textContent = n;
+                flag.style.display = '';
+            } else {
+                flag.style.display = 'none';
+            }
+
+            const foot = document.getElementById('tree-foot-text');
+            const dot = document.getElementById('tree-foot-dot');
+            if (data.openQuestions.length === 0) {
+                foot.textContent = 'No open questions';
+                dot.className = 'dot';
+            } else if (n > 0) {
+                foot.textContent = `${n} unresolved — blocks build`;
+                dot.className = 'dot warn';
+            } else {
+                foot.textContent = 'All open questions decided';
+                dot.className = 'dot';
+            }
+        }
+
+        // Scrolls a section into view and marks the clicked nav item active.
+        function navigateTo(target, node) {
+            document.querySelectorAll('.tnode').forEach(x => x.classList.remove('active'));
+            if (node) node.classList.add('active');
+            const el = document.querySelector(target);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (window.innerWidth <= 900) document.getElementById('tree-nav').classList.remove('open');
+        }
+
+        // Generic render for simple item lists (acceptance, logic, contracts, edges, tests)
         function renderSimpleList(containerId, items, fields, labelSingular, btnId) {
             const container = document.getElementById(containerId);
             container.innerHTML = '';
@@ -952,6 +802,8 @@
                     item.order = parseInt(orderInput.value) || 999;
                     saveData();
                     renderFiles(); // re-sort
+                    renderPipeline();
+                    renderTreeFiles();
                 });
                 orderWrap.appendChild(orderInput);
                 fieldDiv.appendChild(orderWrap);
@@ -973,6 +825,8 @@
                     item.action = actionSelect.value;
                     saveData();
                     renderFiles();
+                    renderPipeline();
+                    renderTreeFiles();
                 });
                 actionWrap.appendChild(actionSelect);
                 fieldDiv.appendChild(actionWrap);
@@ -990,6 +844,8 @@
                     item.path = pathInput.value;
                     saveData();
                     renderFiles();
+                    renderPipeline();
+                    renderTreeFiles();
                 });
                 pathWrap.appendChild(pathInput);
                 fieldDiv.appendChild(pathWrap);
@@ -1046,57 +902,31 @@
             }
 
             const table = document.createElement('table');
-            table.style.width = '100%';
-            table.style.borderCollapse = 'collapse';
+            table.className = 'qa-table';
 
-            // Header
             const thead = table.createTHead();
             const headerRow = thead.insertRow();
             ['Question', 'Options', 'Decision', 'Action'].forEach(text => {
                 const th = document.createElement('th');
                 th.textContent = text;
-                th.style.background = '#f1f5f9';
-                th.style.padding = '0.5rem';
-                th.style.textAlign = 'left';
-                th.style.borderBottom = '2px solid #e2e8f0';
-                th.style.fontWeight = '600';
                 headerRow.appendChild(th);
             });
 
-            // Body
             const tbody = table.createTBody();
             data.openQuestions.forEach((item, idx) => {
                 const row = tbody.insertRow();
-                row.style.borderBottom = '1px solid #e2e8f0';
 
-                // Question cell
                 const qCell = row.insertCell();
-                qCell.style.padding = '0.5rem';
-                qCell.style.maxWidth = '200px';
-                qCell.style.wordWrap = 'break-word';
                 qCell.textContent = item.question || '';
 
-                // Options cell
                 const oCell = row.insertCell();
-                oCell.style.padding = '0.5rem';
-                oCell.style.maxWidth = '180px';
-                oCell.style.fontSize = '0.85rem';
-                oCell.style.color = '#64748b';
-                oCell.style.wordWrap = 'break-word';
-                oCell.innerHTML = (item.options || '').split('\n').join('<br>');
+                oCell.className = 'opts-cell';
+                oCell.textContent = item.options || '';
 
-                // Decision cell
                 const dCell = row.insertCell();
-                dCell.style.padding = '0.5rem';
-                dCell.style.maxWidth = '150px';
                 const decisionTA = document.createElement('textarea');
                 decisionTA.rows = 2;
-                decisionTA.style.width = '100%';
-                decisionTA.style.padding = '0.25rem';
-                decisionTA.style.border = '1px solid #d1d5db';
-                decisionTA.style.borderRadius = '4px';
-                decisionTA.style.fontSize = '0.85rem';
-                decisionTA.style.fontFamily = 'inherit';
+                decisionTA.className = 'decision-input';
                 decisionTA.placeholder = 'Decision here (empty = UNRESOLVED)';
                 decisionTA.value = item.decision || '';
                 decisionTA.addEventListener('input', () => {
@@ -1105,13 +935,10 @@
                 });
                 dCell.appendChild(decisionTA);
 
-                // Action cell
                 const aCell = row.insertCell();
-                aCell.style.padding = '0.5rem';
                 const removeBtn = document.createElement('button');
                 removeBtn.className = 'btn btn-danger btn-sm';
                 removeBtn.textContent = '✕';
-                removeBtn.style.whiteSpace = 'nowrap';
                 removeBtn.addEventListener('click', () => {
                     data.openQuestions.splice(idx, 1);
                     saveData();
@@ -1137,21 +964,13 @@
 
             data.solutionApproach.forEach((item, idx) => {
                 const block = document.createElement('div');
-                block.style.marginBottom = '1.5rem';
-                block.style.paddingBottom = '1.5rem';
-                block.style.borderBottom = '1px solid #e2e8f0';
+                block.className = 'approach-block';
 
                 const header = document.createElement('div');
-                header.style.display = 'flex';
-                header.style.justifyContent = 'space-between';
-                header.style.alignItems = 'center';
-                header.style.marginBottom = '0.5rem';
+                header.className = 'approach-head';
 
                 const title = document.createElement('h4');
-                title.style.margin = '0';
-                title.style.fontSize = '1rem';
-                title.style.fontWeight = '600';
-                title.style.color = '#0f172a';
+                title.className = 'approach-title';
                 title.textContent = item.aspect || 'Untitled';
                 header.appendChild(title);
 
@@ -1167,10 +986,7 @@
                 block.appendChild(header);
 
                 const rationale = document.createElement('p');
-                rationale.style.color = '#475569';
-                rationale.style.lineHeight = '1.6';
-                rationale.style.margin = '0.5rem 0 0 0';
-                rationale.style.whiteSpace = 'pre-wrap';
+                rationale.className = 'approach-rationale';
                 rationale.textContent = item.rationale || '';
                 block.appendChild(rationale);
 
@@ -1247,9 +1063,13 @@
 
         // Input bindings for top-level fields
         document.getElementById('feature-title').addEventListener('input', (e) => { data.title = e.target.value;
-            saveData(); });
+            saveData();
+            document.getElementById('topline-file').textContent = data.title || 'Untitled';
+            document.getElementById('tree-brand-name').textContent = data.title || 'Untitled Feature'; });
         document.getElementById('feature-module').addEventListener('input', (e) => { data.module = e.target.value;
-            saveData(); });
+            saveData();
+            document.getElementById('topline-module').textContent = data.module || '';
+            document.getElementById('tree-brand-meta').textContent = (data.module || 'Module not set') + ' · featurePlan'; });
         document.getElementById('feature-intent').addEventListener('input', (e) => { data.intent = e.target.value;
             saveData(); });
         document.getElementById('feature-goal').addEventListener('input', (e) => { data.goal = e.target.value;
@@ -1266,6 +1086,14 @@
             saveData(); });
         document.getElementById('pattern-overrides').addEventListener('input', (e) => { data.patternOverrides = e.target.value;
             saveData(); });
+
+        // Static nav items (the dynamic file leaves bind their own click handler)
+        document.querySelectorAll('.tnode[data-target]:not(.fileleaf)').forEach(n => {
+            n.addEventListener('click', () => navigateTo(n.dataset.target, n));
+        });
+        document.getElementById('nav-toggle-btn').addEventListener('click', () => {
+            document.getElementById('tree-nav').classList.toggle('open');
+        });
 
         // ------------------------------------------------------------------
         // Export
@@ -1661,8 +1489,8 @@
 
         // Add +Comment buttons to section headers
         function addCommentButtons() {
-            document.querySelectorAll('.card h2').forEach((h2) => {
-                if (h2.querySelector('.section-header-actions')) return; // already added
+            document.querySelectorAll('.section .section-head').forEach((head) => {
+                if (head.querySelector('.section-header-actions')) return; // already added
 
                 const actions = document.createElement('span');
                 actions.className = 'section-header-actions';
@@ -1672,13 +1500,14 @@
                 btn.textContent = '💬 Comment';
                 btn.addEventListener('click', (e) => {
                     e.preventDefault();
-                    const cardBody = h2.closest('.card');
-                    const sectionId = cardBody.id || h2.textContent.trim().toLowerCase().replace(/\s+/g, '-').substring(0, 20);
+                    e.stopPropagation();
+                    const section = head.closest('.section');
+                    const sectionId = section.id || head.textContent.trim().toLowerCase().replace(/\s+/g, '-').substring(0, 20);
                     openCommentPanel(sectionId);
                 });
 
                 actions.appendChild(btn);
-                h2.appendChild(actions);
+                head.appendChild(actions);
             });
         }
 

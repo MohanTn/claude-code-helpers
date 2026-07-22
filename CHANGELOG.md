@@ -28,6 +28,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Added
 
+- Transformed featurePlan template from card-based light layout to dark-themed shell layout with left sidebar tree navigation, dashboard stat tiles showing plan health, build pipeline visualization, and refactored JavaScript for new nav paradigm. Updated skill metadata and hook documentation.
 - Added three new plan sections to the featurePlan workflow: Captured Intent (user's ask + inference), Acceptance Criteria (testable done conditions), and Resulting Folder Structure (ASCII tree of file changes). These changes are additive—all new form fields, new template sections, new test cases—with no modifications to existing logic.
 - Adds repo-map-check skill to avoid redundant filesystem scans, injects it automatically when prompts mention file discovery, and extends Copilot's hook system with context augmentation and session audit capabilities.
 - Adds Pi agent integration (hooks, sandbox, skills), containerized multi-agent environment via Docker, sandbox support for Claude Code, and comprehensive documentation. Pi shares the same global instructions, skills, and shell-out hook architecture as Claude and Copilot but runs isolated in named-volume-backed containers to keep auth/session state persistent while config syncs on every start.

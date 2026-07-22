@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# repo-map.sh <root> — write <root>/.claude/repo-map.md: a folder -> file ->
-# symbol index of the whole repo, so an agent can orient from one Read instead
-# of a fan-out of fd/rg/Glob calls.
+# Generate a folder → file → symbol index of the entire repository as .claude/repo-map.md.
+# Allows agents to orient from a single Read of this index instead of multiple filesystem
+# queries (fd, rg, grep). Runs on SessionStart; best-effort, does not error if generation fails.
+# Usage: repo-map.sh [root_directory]
 #
 # Symbols come from universal-ctags (nix/packages.nix), filtered to definition
 # kinds; JSON keys, markdown headings and local variables are dropped as noise.
