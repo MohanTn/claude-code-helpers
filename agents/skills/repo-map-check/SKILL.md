@@ -1,4 +1,9 @@
-# Skill: Repo Map Check
+---
+name: repo-map-check
+description: Check .claude/repo-map.md for cached file inventory before running filesystem queries.
+---
+
+# Repo Map Check
 
 **Trigger:** File inventory discovery queries (ls, find, file-structure questions about agents/boilerplats, claude/hooks, or other tracked directories).
 
