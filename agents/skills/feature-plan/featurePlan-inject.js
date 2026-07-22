@@ -55,6 +55,7 @@ function loadTemplate(templatePath) {
 // changes in both places.
 const ITEM_FIELD_DEFAULTS = {
   solutionApproach: { aspect: '', rationale: '' },
+  acceptanceCriteria: { criterion: '', verification: '' },
   files:            { order: 0, action: 'create', path: '', description: '', pseudoCode: '' },
   logicSteps:       { step: '', pseudo: '' },
   contracts:        { name: '', inputs: '', outputs: '' },
@@ -82,8 +83,10 @@ function normalizePlan(config) {
   const normalized = {
     title:            config.title || '',
     module:           config.module || '',
+    intent:           config.intent || '',
     goal:             config.goal || '',
     context:          config.context || '',
+    folderStructure:  config.folderStructure || '',
     patternCore:      config.patternCore || 'Layered (Controller -> Service -> Repository)',
     patternBusiness:  config.patternBusiness || 'Transaction Script',
     patternSpecific:  config.patternSpecific || '',
@@ -122,9 +125,11 @@ function main() {
     console.error('Usage: node featurePlan-inject.js <input-json> <output-html> [template-path]');
     console.error('');
     console.error('Arguments:');
-    console.error('  <input-json>    JSON with title, module, goal, context, patternCore,');
-    console.error('                  patternBusiness, patternSpecific, patternOverrides,');
-    console.error('                  files, logicSteps, contracts, edgeCases, testScenarios');
+    console.error('  <input-json>    JSON with title, module, intent, goal, context,');
+    console.error('                  folderStructure, patternCore, patternBusiness,');
+    console.error('                  patternSpecific, patternOverrides, solutionApproach,');
+    console.error('                  acceptanceCriteria, files, logicSteps, contracts,');
+    console.error('                  edgeCases, testScenarios');
     console.error('  <output-html>   Path to write the final feature plan document');
     console.error('  [template-path] HTML template (default: featurePlan-template.html next to this script)');
     process.exit(1);

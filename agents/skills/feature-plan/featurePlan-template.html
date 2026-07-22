@@ -289,8 +289,17 @@
             <div style="flex:2;"><label>Feature Title</label><input id="feature-title" placeholder="e.g. Add two-factor authentication" /></div>
             <div style="flex:1;"><label>Target Module / Context</label><input id="feature-module" placeholder="e.g. User Service" /></div>
         </div>
+        <div class="mt-1"><label>Captured Intent (the user's original ask, verbatim, plus what was inferred from it)</label><textarea id="feature-intent" rows="2" placeholder="e.g. User asked: 'add 2FA to login'. Inferred: TOTP second factor verified at login; enrollment managed from the profile page."></textarea></div>
         <div class="mt-1"><label>User Story / Goal</label><textarea id="feature-goal" rows="2" placeholder="As a user, I want to ... so that ..."></textarea></div>
         <div class="mt-1"><label>Existing Codebase Context (files, classes, DB schemas that already exist)</label><textarea id="feature-context" rows="2" placeholder="e.g. We already have User.php, AuthService.php, and a 'users' table with columns..."></textarea></div>
+    </div>
+
+    <!-- ACCEPTANCE CRITERIA -->
+    <div class="card">
+        <h2>✅ Acceptance Criteria</h2>
+        <p class="text-muted text-small">Testable conditions that define "done". Each criterion states an expected behaviour and how to verify it.</p>
+        <div id="acceptance-container"></div>
+        <button id="add-acceptance-btn" class="btn btn-outline btn-block mt-1">＋ Add acceptance criterion</button>
     </div>
 
     <!-- DESIGN PATTERNS & OVERRIDES (Crucial for tweaking) -->
@@ -315,6 +324,13 @@
         <p class="text-muted text-small">Explain the high-level design decisions, trade-offs, and rationale before diving into implementation. This section helps reviewers understand the "why" before the "what".</p>
         <div id="approach-container"></div>
         <button id="add-approach-btn" class="btn btn-outline btn-block mt-1">＋ Add design decision</button>
+    </div>
+
+    <!-- RESULTING FOLDER STRUCTURE -->
+    <div class="card">
+        <h2>🌳 Resulting Folder Structure</h2>
+        <p class="text-muted text-small">Tree of the affected directories after the change. Mark every touched file <strong>[CREATE]</strong>, <strong>[UPDATE]</strong>, or <strong>[DELETE]</strong>; must match the file manifest below.</p>
+        <textarea id="folder-structure" rows="8" placeholder="src/&#10;├── Auth/&#10;│   └── AuthService.php    [UPDATE]&#10;└── Security/&#10;    └── TotpService.php    [CREATE]"></textarea>
     </div>
 
     <!-- FILE MANIFEST (ORDERED) -->
@@ -402,13 +418,16 @@
             return {
                 title: '',
                 module: '',
+                intent: '',
                 goal: '',
                 context: '',
+                folderStructure: '',
                 patternCore: 'Layered (Controller -> Service -> Repository)',
                 patternBusiness: 'Transaction Script',
                 patternSpecific: '',
                 patternOverrides: '',
                 solutionApproach: [],
+                acceptanceCriteria: [],
                 files: [],
                 logicSteps: [],
                 contracts: [],
@@ -454,6 +473,7 @@
         // ------------------------------------------------------------------
         function renderAll() {
             renderApproach();
+            renderAcceptance();
             renderFiles();
             renderLogic();
             renderContracts();
@@ -462,8 +482,10 @@
 
             document.getElementById('feature-title').value = data.title || '';
             document.getElementById('feature-module').value = data.module || '';
+            document.getElementById('feature-intent').value = data.intent || '';
             document.getElementById('feature-goal').value = data.goal || '';
             document.getElementById('feature-context').value = data.context || '';
+            document.getElementById('folder-structure').value = data.folderStructure || '';
             document.getElementById('pattern-core').value = data.patternCore || '';
             document.getElementById('pattern-business').value = data.patternBusiness || '';
             document.getElementById('pattern-specific').value = data.patternSpecific || '';
@@ -696,6 +718,14 @@
             renderSimpleList('approach-container', data.solutionApproach, fields, 'Decision', 'add-approach-btn');
         }
 
+        function renderAcceptance() {
+            const fields = [
+                { key: 'criterion', label: 'Criterion (Given / When / Then, or a testable statement)', type: 'textarea', rows: 2, fullWidth: true, placeholder: 'e.g. Given a user with 2FA enabled, when they log in without a code, then the login is rejected with 2fa_required.' },
+                { key: 'verification', label: 'How to Verify', type: 'textarea', rows: 2, fullWidth: true, placeholder: 'e.g. Integration test on POST /login; manual check via curl.' }
+            ];
+            renderSimpleList('acceptance-container', data.acceptanceCriteria, fields, 'Criterion', 'add-acceptance-btn');
+        }
+
         function renderLogic() {
             const fields = [
                 { key: 'step', label: 'Step Title', type: 'text', placeholder: 'e.g. Validate user input' },
@@ -746,6 +776,7 @@
         }
 
         bindAdd('add-approach-btn', 'solutionApproach', { aspect: '', rationale: '' });
+        bindAdd('add-acceptance-btn', 'acceptanceCriteria', { criterion: '', verification: '' });
         bindAdd('add-file-btn', 'files', { order: data.files.length + 1, action: 'create', path: '', description: '',
             pseudoCode: '' });
         bindAdd('add-logic-btn', 'logicSteps', { step: '', pseudo: '' });
@@ -758,7 +789,11 @@
             saveData(); });
         document.getElementById('feature-module').addEventListener('input', (e) => { data.module = e.target.value;
             saveData(); });
+        document.getElementById('feature-intent').addEventListener('input', (e) => { data.intent = e.target.value;
+            saveData(); });
         document.getElementById('feature-goal').addEventListener('input', (e) => { data.goal = e.target.value;
+            saveData(); });
+        document.getElementById('folder-structure').addEventListener('input', (e) => { data.folderStructure = e.target.value;
             saveData(); });
         document.getElementById('feature-context').addEventListener('input', (e) => { data.context = e.target.value;
             saveData(); });
@@ -781,8 +816,22 @@
             lines.push('');
             lines.push(`FEATURE TITLE: ${data.title || 'Not set'}`);
             lines.push(`TARGET MODULE: ${data.module || 'Not set'}`);
+            lines.push(`CAPTURED INTENT: ${data.intent || 'Not set'}`);
             lines.push(`USER STORY: ${data.goal || 'Not set'}`);
             lines.push(`EXISTING CONTEXT: ${data.context || 'Not set'}`);
+            lines.push('');
+
+            // Acceptance Criteria
+            lines.push('--- ACCEPTANCE CRITERIA ---');
+            if (data.acceptanceCriteria.length === 0) {
+                lines.push('(No acceptance criteria defined)');
+            } else {
+                data.acceptanceCriteria.forEach((a, idx) => {
+                    lines.push(`Criterion ${idx+1}: ${a.criterion || 'Untitled'}`);
+                    if (a.verification) lines.push(`  Verify: ${a.verification}`);
+                    lines.push('');
+                });
+            }
             lines.push('');
 
             lines.push('--- DESIGN PATTERNS & OVERRIDES ---');
@@ -807,6 +856,17 @@
                     lines.push('');
                 });
             }
+
+            // Folder structure
+            lines.push('--- RESULTING FOLDER STRUCTURE ---');
+            if (!data.folderStructure) {
+                lines.push('(No folder structure defined)');
+            } else {
+                data.folderStructure.split('\n').forEach(line => {
+                    lines.push(`  ${line}`);
+                });
+            }
+            lines.push('');
 
             // Files
             lines.push('--- FILE CHANGE MANIFEST (IN ORDER) ---');
