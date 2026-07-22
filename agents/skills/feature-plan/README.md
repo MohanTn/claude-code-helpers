@@ -8,9 +8,11 @@ The common layer behind Claude Code's `/featurePlan` command (`claude/commands/f
 
 The on-page sections in order:
 
-- **Feature Overview** — title, target module, user story/goal, and existing-codebase context.
+- **Feature Overview** — title, target module, captured intent (user's ask verbatim + inferred reading), user story/goal, and existing-codebase context.
+- **Acceptance Criteria** — testable "done" conditions, each with how to verify it.
 - **Design Patterns & Architectural Overrides** — core pattern (e.g. Layered), business-logic pattern (e.g. Transaction Script), specific implementations (Factory vs Builder, Repository vs DAO), and explicit overrides/constraints.
 - **Solution Approach & Rationale** — high-level design decisions, trade-offs, and the reasoning behind key choices before diving into implementation details.
+- **Resulting Folder Structure** — ASCII tree of the affected directories after the change, each touched file marked `[CREATE]`, `[UPDATE]`, or `[DELETE]`.
 - **File Change Manifest (In Order of Execution)** — ordered list of files with `action` (create/update/delete), `path`, `description`, and `pseudoCode` per file. Sorted by a numeric `order` field; reorderable in the UI.
 - **Core Business Logic (Detailed Pseudo-Code)** — step-by-step algorithm that an AI can translate into actual code.
 - **Function / API Contracts** — entry points (Controllers, Event Handlers, CLI commands) with inputs and outputs.
@@ -21,7 +23,7 @@ The **Export & Execution** card adds a **Copy AI-Ready Plan** button (full docum
 
 ## Two-stage workflow
 
-1. **Content (the AI).** Generates the plan as **structured JSON** — scalar fields (`title`, `module`, `goal`, `context`, `patternCore`, `patternBusiness`, `patternSpecific`, `patternOverrides`) and section arrays (`files`, `logicSteps`, `contracts`, `edgeCases`, `testScenarios`). Cheap in tokens: no template boilerplate is regenerated.
+1. **Content (the AI).** Generates the plan as **structured JSON** — scalar fields (`title`, `module`, `intent`, `goal`, `context`, `folderStructure`, `patternCore`, `patternBusiness`, `patternSpecific`, `patternOverrides`) and section arrays (`solutionApproach`, `acceptanceCriteria`, `files`, `logicSteps`, `contracts`, `edgeCases`, `testScenarios`). Cheap in tokens: no template boilerplate is regenerated.
 2. **Injection (the script).** `featurePlan-inject.js` merges that JSON into `featurePlan-template.html` deterministically, embedding it as the page's `INITIAL_DATA`. The AI never reads or rewrites the template.
 
 ## Usage
@@ -45,14 +47,16 @@ node agents/skills/featurePlan/featurePlan-inject.js featurePlan.json featurePla
 
 ## JSON structure
 
-Top-level keys: 8 scalar pattern/feature fields (`title`, `module`, `goal`, `context`, `patternCore`, `patternBusiness`, `patternSpecific`, `patternOverrides`) plus 5 section arrays.
+Top-level keys: 10 scalar pattern/feature fields (`title`, `module`, `intent`, `goal`, `context`, `folderStructure`, `patternCore`, `patternBusiness`, `patternSpecific`, `patternOverrides`) plus 7 section arrays.
 
 ```json
 {
   "title": "Add two-factor authentication",
   "module": "User Service",
+  "intent": "User asked: \"add 2FA to login\". Inferred: TOTP second factor verified at login; enrollment managed from the profile page.",
   "goal": "As a user, I want to require a second factor at login so that a stolen password alone cannot compromise my account.",
   "context": "Existing User.php, AuthService.php, and a users table with columns id, email, password_hash.",
+  "folderStructure": "src/\n├── Auth/\n│   └── AuthService.php    [UPDATE]\n└── Security/\n    └── TotpService.php    [CREATE]",
   "patternCore": "Layered (Controller -> Service -> Repository)",
   "patternBusiness": "Transaction Script",
   "patternSpecific": "Use Repository for User; Factory for OTP enrollment DTO.",
@@ -60,6 +64,9 @@ Top-level keys: 8 scalar pattern/feature fields (`title`, `module`, `goal`, `con
   "solutionApproach": [
     { "id": "s1", "aspect": "Architecture", "rationale": "Separate TOTP logic into its own service to keep auth concerns modular. This allows future 2FA methods (SMS, hardware keys) without touching AuthService." },
     { "id": "s2", "aspect": "Performance", "rationale": "Store TOTP secrets encrypted in the users table, not in a separate table. Reduces DB lookups during login; trade-off is we can't easily audit secret rotations, but we can log them in an audit table separately." }
+  ],
+  "acceptanceCriteria": [
+    { "id": "a1", "criterion": "Given a user with 2FA enabled, when they log in without a code, then the login is rejected with reason 2fa_required.", "verification": "Integration test on POST /login." }
   ],
   "files": [
     { "id": "f1", "order": 1, "action": "create", "path": "src/Security/TotpService.php", "description": "TOTP enrollment + verification", "pseudoCode": "class TotpService {\n  public function enroll(User $user): string { /* generate secret */ }\n  public function verify(User $user, string $code): bool { /* check code */ }\n}" },

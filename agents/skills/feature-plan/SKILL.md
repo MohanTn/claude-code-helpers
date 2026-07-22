@@ -17,8 +17,10 @@ This is the **code-level** step after the architectural-level `/arch` plan has p
 
 **Mode A — First draft.** No `featurePlan-<slug>.html` exists in the working directory.
 1. Research the repo (see below). Draft every section:
-   - **Feature Overview** — title plus the target module, the user story, and a one-paragraph note on existing code this touches.
+   - **Feature Overview** — title plus the target module, the captured intent (user's ask verbatim + what you inferred), the user story, and a one-paragraph note on existing code this touches.
+   - **Acceptance Criteria** — testable conditions that define "done", each with how to verify it. Pull these from the user's ask; every criterion must be checkable after implementation.
    - **Design Patterns & Overrides** — pin the layered + business-logic patterns, name any specific pattern choices (Repository vs DAO, Factory vs Builder), and any explicit overrides that deviate from the conventional approach.
+   - **Resulting Folder Structure** — ASCII tree of the affected directories after the change, every touched file marked `[CREATE]`, `[UPDATE]`, or `[DELETE]`. Must agree with the File Manifest.
    - **File Manifest** — ordered list of every file to create/update/delete, with a code-level stub or signature per file. Each item: `{ action, path, description, pseudoCode }`. Order reflects build sequence: types before consumers, repository before service, schema before migration.
    - **Logic Steps** — the orchestration in plain English + pseudo-code (one step per concern: validate → load → mutate → persist → return).
    - **Contracts** — entry points (controllers, handlers, CLI commands) with explicit inputs and outputs.
@@ -43,12 +45,14 @@ This is the **code-level** step after the architectural-level `/arch` plan has p
 
 ---
 
-## Top-level (`title`, `module`, `goal`, `context`)
+## Top-level (`title`, `module`, `intent`, `goal`, `context`, `folderStructure`)
 
 - `title` — short feature name; goes into `<title>`, `<h1>`, and the Feature Overview card. Keep it slug-friendly (no slashes / colons).
 - `module` — the high-level service / area this lives in (e.g. `User Service`, `Billing`, `Search`).
+- `intent` — intent capture: the user's original ask quoted (near-)verbatim, then what you inferred from it. Lets the user correct a misread before anything is built.
 - `goal` — user story, "As a … I want … so that …". Free text in the Feature Overview card.
 - `context` — the existing codebase context this feature plugs into: files that already exist, classes/services, DB tables/columns. The plan's effectiveness depends on this being honest and specific.
+- `folderStructure` — ASCII tree of the affected directories after the change, one `[CREATE]` / `[UPDATE]` / `[DELETE]` marker per touched file. Derive it from `files[]`; the two must list the same paths.
 
 ## Design patterns (`patternCore`, `patternBusiness`, `patternSpecific`, `patternOverrides`)
 
@@ -61,11 +65,12 @@ The inject script falls back to the conventional `Layered (Controller -> Service
 
 ---
 
-## Sections (`solutionApproach`, `files`, `logicSteps`, `contracts`, `edgeCases`, `testScenarios`)
+## Sections (`solutionApproach`, `acceptanceCriteria`, `files`, `logicSteps`, `contracts`, `edgeCases`, `testScenarios`)
 
 Each section is an array of items. Item shape per section:
 
 - **solutionApproach** — `{ id, aspect, rationale }`. Explain the solution before implementation. `aspect` is a key decision area (e.g. "Architecture", "Integration", "Performance", "Error Handling"); `rationale` is the reasoning, trade-offs, and high-level explanation. This section appears first to allow the user to review the design before seeing the code manifest.
+- **acceptanceCriteria** — `{ id, criterion, verification }`. `criterion` is a testable "done" condition (Given/When/Then or a plain statement); `verification` is how to check it (which test, which manual step). The feature is done only when every criterion passes.
 - **files** — `{ id, order, action, path, description, pseudoCode }`. `action` ∈ { create, update, delete } (drives the on-page badge colour). `order` is a positive integer (the UI sorts ascending by it). `pseudoCode` is a code-level stub or signature; copy it verbatim as the scaffold when implementing. New files: emit a stub signature. Updated files: describe only the new/changed surface.
 - **logicSteps** — `{ id, step, pseudo }`. One step per top-level concern (validate → load → mutate → persist → return), with plain-English + pseudo-code.
 - **contracts** — `{ id, name, inputs, outputs }`. `name` is the route + method or the function signature; `inputs` and `outputs` are concrete shapes (request body schema, return type, error responses included).
@@ -82,8 +87,10 @@ Write this to `featurePlan-<slug>.json`:
 {
   "title": "Feature name",
   "module": "Target module / service",
+  "intent": "User asked: \"add 2FA to login\". Inferred: TOTP second factor verified at login; enrollment managed from the profile page.",
   "goal": "As a …, I want …, so that …",
   "context": "Existing User.php, AuthService.php, and a users table with columns id, email, password_hash.",
+  "folderStructure": "src/\n├── Auth/\n│   └── AuthService.php    [UPDATE]\n└── Security/\n    └── TotpService.php    [CREATE]",
   "patternCore": "Layered (Controller -> Service -> Repository)",
   "patternBusiness": "Transaction Script",
   "patternSpecific": "Use Repository for User; Factory for OTP enrollment DTO.",
@@ -91,6 +98,10 @@ Write this to `featurePlan-<slug>.json`:
   "solutionApproach": [
     { "id": "s-1", "aspect": "Architecture", "rationale": "We're using a three-tier layered approach with a dedicated Service layer. This keeps auth logic decoupled from HTTP routing and allows reuse across CLI and API endpoints. Trade-off: adds a thin Service abstraction layer." },
     { "id": "s-2", "aspect": "Integration", "rationale": "TOTP enrollment happens at the User level, not during login. This allows users to set up 2FA at any time, not just at signup, and we can support multiple 2FA methods (TOTP, SMS) in the future." }
+  ],
+  "acceptanceCriteria": [
+    { "id": "a-1", "criterion": "Given a user with 2FA enabled, when they log in without a code, then the login is rejected with reason 2fa_required.", "verification": "Integration test on POST /login." },
+    { "id": "a-2", "criterion": "A user can enroll in TOTP from their profile and the secret round-trips through an authenticator app.", "verification": "Manual check with an authenticator app against the enrollment QR." }
   ],
   "files": [
     {
@@ -134,7 +145,7 @@ Write this to `featurePlan-<slug>.json`:
 
 Print to chat:
 1. Filename (`featurePlan-<slug>.html`).
-2. One line per non-empty section so the user knows what was drafted (e.g. "solutionApproach: 2, files: 4 (1 create, 3 update), logicSteps: 3, contracts: 2, edgeCases: 5, testScenarios: 6").
+2. One line per non-empty section so the user knows what was drafted (e.g. "solutionApproach: 2, acceptanceCriteria: 3, files: 4 (1 create, 3 update), logicSteps: 3, contracts: 2, edgeCases: 5, testScenarios: 6").
 3. Next step: "Open the file, review the solution approach, edit any section directly in the browser, then click **Copy AI-Ready Plan** and paste the block back — I'll implement strictly per the plan."
 
 ---
@@ -146,12 +157,15 @@ Print to chat:
 - `files[].order` reflects build sequence: types/repos before consumers, schema before migration, foundation before glue.
 - `patternCore` / `patternBusiness` match what's actually used in this repo (read one file that exemplifies the convention before drafting).
 - `edgeCases` enumerates scenarios typical for this kind of feature (auth: missing creds, bad creds, rate-limit). `testScenarios` map 1:1 to file changes, not to aspirational coverage.
+- `intent` quotes the user's actual ask before the inferred reading; don't paraphrase away the original words.
+- `acceptanceCriteria` are checkable after implementation (a test or a concrete manual step), not vague qualities ("works well").
+- `folderStructure` lists exactly the paths in `files[]` with matching `[CREATE]`/`[UPDATE]`/`[DELETE]` markers.
 
 ---
 
 ## Implementation
 
 1. `featurePlan-<slug>.html` exists? → Mode B, else Mode A.
-2. **Mode A:** research the code, draft every section (8 scalar fields + 5 section arrays), save JSON, run `node ~/.agents/skills/featurePlan/featurePlan-inject.js featurePlan-<slug>.json featurePlan-<slug>.html`, delete JSON.
+2. **Mode A:** research the code, draft every section (10 scalar fields + 7 section arrays), save JSON, run `node ~/.agents/skills/featurePlan/featurePlan-inject.js featurePlan-<slug>.json featurePlan-<slug>.html`, delete JSON.
 3. **Mode B:** read the pasted "Copy AI-Ready Plan" block, implement strictly per the plan, or revise sections and re-inject if the design changed.
 4. Report per "After saving" (Mode A) or proceed to implementation (Mode B).

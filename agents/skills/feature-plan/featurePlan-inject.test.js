@@ -20,12 +20,17 @@ function sampleConfig(overrides = {}) {
   return {
     title: 'Add two-factor authentication',
     module: 'User Service',
+    intent: 'User asked: "add 2FA to login". Inferred: TOTP second factor verified at login.',
     goal: 'As a user, I want to require a second factor at login so that a stolen password alone cannot compromise my account.',
     context: 'Existing User.php, AuthService.php, and a users table with columns id, email, password_hash.',
+    folderStructure: 'src/\n├── Auth/\n│   └── AuthService.php    [UPDATE]\n└── Security/\n    └── TotpService.php    [CREATE]',
     patternCore: 'Layered (Controller -> Service -> Repository)',
     patternBusiness: 'Transaction Script',
     patternSpecific: 'Use Repository for User; Factory for OTP enrollment DTO.',
     patternOverrides: 'No separate Repository for OTP — reuse UserRepository.',
+    acceptanceCriteria: [
+      { id: 'a1', criterion: 'Login without a code is rejected with 2fa_required when 2FA is enabled', verification: 'Integration test on POST /login.' }
+    ],
     files: [
       { id: 'f1', order: 1, action: 'create', path: 'src/Security/TotpService.php', description: 'TOTP enrollment + verification', pseudoCode: 'class TotpService {\n  public function enroll(User $user): string { /* generate secret */ }\n  public function verify(User $user, string $code): bool { /* check code */ }\n}' },
       { id: 'f2', order: 2, action: 'update', path: 'src/Auth/AuthService.php', description: 'Wire TOTP into login flow', pseudoCode: 'public function login($email, $password, $code) { /* verify + then 2fa */ }' }
@@ -66,8 +71,10 @@ test('normalizePlan accepts the same key names as the template data model', () =
   const plan = normalizePlan({
     title: 'T',
     module: 'M',
+    intent: 'I',
     goal: 'G',
     context: 'C',
+    folderStructure: 'F',
     patternCore: 'PC',
     patternBusiness: 'PB',
     patternSpecific: 'PS',
@@ -75,8 +82,10 @@ test('normalizePlan accepts the same key names as the template data model', () =
   });
   assert.strictEqual(plan.title, 'T');
   assert.strictEqual(plan.module, 'M');
+  assert.strictEqual(plan.intent, 'I');
   assert.strictEqual(plan.goal, 'G');
   assert.strictEqual(plan.context, 'C');
+  assert.strictEqual(plan.folderStructure, 'F');
   assert.strictEqual(plan.patternCore, 'PC');
   assert.strictEqual(plan.patternBusiness, 'PB');
   assert.strictEqual(plan.patternSpecific, 'PS');
@@ -87,8 +96,10 @@ test('normalizePlan fills string defaults for missing top-level keys', () => {
   const plan = normalizePlan({});
   assert.strictEqual(plan.title, '');
   assert.strictEqual(plan.module, '');
+  assert.strictEqual(plan.intent, '');
   assert.strictEqual(plan.goal, '');
   assert.strictEqual(plan.context, '');
+  assert.strictEqual(plan.folderStructure, '');
   assert.strictEqual(plan.patternSpecific, '');
   assert.strictEqual(plan.patternOverrides, '');
 });
@@ -111,6 +122,7 @@ test('normalizePlan fills empty arrays for missing section arrays', () => {
 
 test('normalizePlan fills per-field defaults for sparse section items', () => {
   const plan = normalizePlan({
+    acceptanceCriteria: [{ id: 'a-1' }],
     files: [{ id: 'f-1' }],
     logicSteps: [{ id: 'l-1' }],
     contracts: [{ id: 'c-1' }],
@@ -130,6 +142,9 @@ test('normalizePlan fills per-field defaults for sparse section items', () => {
   assert.strictEqual(plan.testScenarios[0].target, '');
   assert.strictEqual(plan.edgeCases[0].condition, '');
   assert.strictEqual(plan.edgeCases[0].handling, '');
+  assert.strictEqual(plan.acceptanceCriteria[0].id, 'a-1');
+  assert.strictEqual(plan.acceptanceCriteria[0].criterion, '');
+  assert.strictEqual(plan.acceptanceCriteria[0].verification, '');
 });
 
 test('normalizePlan coerces `order` to Number so the sort works', () => {
@@ -143,6 +158,9 @@ test('normalizePlan coerces `order` to Number so the sort works', () => {
 
 test('normalizePlan preserves full content of every section type', () => {
   const plan = normalizePlan(sampleConfig());
+  assert.strictEqual(plan.intent.startsWith('User asked:'), true);
+  assert.strictEqual(plan.folderStructure.includes('[CREATE]'), true);
+  assert.strictEqual(plan.acceptanceCriteria[0].verification, 'Integration test on POST /login.');
   assert.strictEqual(plan.files.length, 2);
   assert.strictEqual(plan.files[0].action, 'create');
   assert.strictEqual(plan.files[1].action, 'update');
@@ -219,6 +237,7 @@ test('injectContent emits every section from the sample config', () => {
     'TOTP enrollment', 'Wire TOTP',                    // file descriptions
     'POST /api/v2/verify-2fa',                         // contract
     'User has 2FA enabled',                            // edge case
+    'rejected with 2fa_required',                      // acceptance criterion
     'TotpService::enroll()',                           // test target
   ]) {
     assert.ok(html.includes(marker), `expected injection output to contain ${JSON.stringify(marker)}`);
