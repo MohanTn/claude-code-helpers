@@ -44,6 +44,27 @@
             color: #0f172a;
             border-bottom: 1px solid #e2e8f0;
             padding-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            user-select: none;
+        }
+        .card h2 .toggle-arrow {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+        .card h2 .toggle-arrow.collapsed {
+            transform: rotate(-90deg);
+        }
+        .card.collapsed {
+            padding-bottom: 0.5rem;
+        }
+        .card.collapsed > *:not(h2) {
+            display: none;
         }
         .card h3 {
             font-size: 1rem;
@@ -227,7 +248,63 @@
         td {
             padding: 0.5rem 0.8rem;
             border-bottom: 1px solid #e2e8f0;
-            vertical-align: middle;
+            vertical-align: top;
+        }
+        td textarea, td input {
+            width: 100%;
+            max-width: 100%;
+        }
+
+        /* Paragraph-style sections */
+        .paragraph-section {
+            line-height: 1.6;
+            color: #334155;
+        }
+        .paragraph-section p {
+            margin-bottom: 1rem;
+        }
+        .paragraph-section .edit-btn {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            margin-left: 1rem;
+        }
+        .paragraph-section .edit-btn:hover {
+            background: #e2e8f0;
+        }
+        .paragraph-section.editing textarea {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #2563eb;
+            border-radius: 6px;
+            font-family: inherit;
+            resize: vertical;
+        }
+        .paragraph-section.editing .edit-actions {
+            margin-top: 0.5rem;
+            display: flex;
+            gap: 0.5rem;
+        }
+        .paragraph-section.editing button {
+            padding: 0.3rem 0.8rem;
+            font-size: 0.85rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .paragraph-section.editing .save-btn {
+            background: #16a34a;
+            color: white;
+        }
+        .paragraph-section.editing .cancel-btn {
+            background: #f1f5f9;
+            color: #334155;
+            border: 1px solid #cbd5e1;
         }
 
         .approval-gate {
@@ -691,17 +768,54 @@
             renderEdges();
             renderTests();
 
+            renderFeatureOverview();
+            renderPatterns();
+            addCollapseTogglesToCards();
+            updateGate();
+        }
+
+        function addCollapseTogglesToCards() {
+            document.querySelectorAll('.card h2').forEach((h2) => {
+                // Remove existing arrow if present
+                const existing = h2.querySelector('.toggle-arrow');
+                if (existing) existing.remove();
+
+                // Add new arrow
+                const arrow = document.createElement('span');
+                arrow.className = 'toggle-arrow';
+                arrow.innerHTML = '▼';
+                h2.insertBefore(arrow, h2.firstChild);
+
+                // Remove existing listener to avoid duplicates
+                const oldHandler = h2._collapseHandler;
+                if (oldHandler) h2.removeEventListener('click', oldHandler);
+
+                // Add collapse/expand handler
+                const handler = (e) => {
+                    e.preventDefault();
+                    const card = h2.closest('.card');
+                    card.classList.toggle('collapsed');
+                    arrow.classList.toggle('collapsed');
+                };
+                h2._collapseHandler = handler;
+                h2.addEventListener('click', handler);
+            });
+        }
+
+        function renderFeatureOverview() {
             document.getElementById('feature-title').value = data.title || '';
             document.getElementById('feature-module').value = data.module || '';
             document.getElementById('feature-intent').value = data.intent || '';
             document.getElementById('feature-goal').value = data.goal || '';
             document.getElementById('feature-context').value = data.context || '';
-            document.getElementById('folder-structure').value = data.folderStructure || '';
+        }
+
+        function renderPatterns() {
             document.getElementById('pattern-core').value = data.patternCore || '';
             document.getElementById('pattern-business').value = data.patternBusiness || '';
             document.getElementById('pattern-specific').value = data.patternSpecific || '';
             document.getElementById('pattern-overrides').value = data.patternOverrides || '';
-            updateGate();
+            document.getElementById('folder-structure').value = data.folderStructure || '';
         }
 
         // Generic render for simple item lists (logic, contracts, edges, tests)
@@ -923,20 +1037,145 @@
         // Render specific sections
         // ------------------------------------------------------------------
         function renderQuestions() {
-            const fields = [
-                { key: 'question', label: 'Question (what must the human decide?)', type: 'textarea', rows: 2, fullWidth: true, placeholder: 'e.g. Should enrollment be mandatory at next login, or opt-in from the profile page?' },
-                { key: 'options', label: 'Options (AI-drafted, one per line)', type: 'textarea', rows: 2, fullWidth: true },
-                { key: 'decision', label: 'Decision (human-owned; empty = UNRESOLVED)', type: 'textarea', rows: 2, fullWidth: true }
-            ];
-            renderSimpleList('questions-container', data.openQuestions, fields, 'Question', 'add-question-btn');
+            const container = document.getElementById('questions-container');
+            container.innerHTML = '';
+
+            if (data.openQuestions.length === 0) {
+                container.innerHTML = '<p class="text-muted">No open questions — the ask was unambiguous.</p>';
+                return;
+            }
+
+            const table = document.createElement('table');
+            table.style.width = '100%';
+            table.style.borderCollapse = 'collapse';
+
+            // Header
+            const thead = table.createTHead();
+            const headerRow = thead.insertRow();
+            ['Question', 'Options', 'Decision', 'Action'].forEach(text => {
+                const th = document.createElement('th');
+                th.textContent = text;
+                th.style.background = '#f1f5f9';
+                th.style.padding = '0.5rem';
+                th.style.textAlign = 'left';
+                th.style.borderBottom = '2px solid #e2e8f0';
+                th.style.fontWeight = '600';
+                headerRow.appendChild(th);
+            });
+
+            // Body
+            const tbody = table.createTBody();
+            data.openQuestions.forEach((item, idx) => {
+                const row = tbody.insertRow();
+                row.style.borderBottom = '1px solid #e2e8f0';
+
+                // Question cell
+                const qCell = row.insertCell();
+                qCell.style.padding = '0.5rem';
+                qCell.style.maxWidth = '200px';
+                qCell.style.wordWrap = 'break-word';
+                qCell.textContent = item.question || '';
+
+                // Options cell
+                const oCell = row.insertCell();
+                oCell.style.padding = '0.5rem';
+                oCell.style.maxWidth = '180px';
+                oCell.style.fontSize = '0.85rem';
+                oCell.style.color = '#64748b';
+                oCell.style.wordWrap = 'break-word';
+                oCell.innerHTML = (item.options || '').split('\n').join('<br>');
+
+                // Decision cell
+                const dCell = row.insertCell();
+                dCell.style.padding = '0.5rem';
+                dCell.style.maxWidth = '150px';
+                const decisionTA = document.createElement('textarea');
+                decisionTA.rows = 2;
+                decisionTA.style.width = '100%';
+                decisionTA.style.padding = '0.25rem';
+                decisionTA.style.border = '1px solid #d1d5db';
+                decisionTA.style.borderRadius = '4px';
+                decisionTA.style.fontSize = '0.85rem';
+                decisionTA.style.fontFamily = 'inherit';
+                decisionTA.placeholder = 'Decision here (empty = UNRESOLVED)';
+                decisionTA.value = item.decision || '';
+                decisionTA.addEventListener('input', () => {
+                    item.decision = decisionTA.value;
+                    saveData();
+                });
+                dCell.appendChild(decisionTA);
+
+                // Action cell
+                const aCell = row.insertCell();
+                aCell.style.padding = '0.5rem';
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'btn btn-danger btn-sm';
+                removeBtn.textContent = '✕';
+                removeBtn.style.whiteSpace = 'nowrap';
+                removeBtn.addEventListener('click', () => {
+                    data.openQuestions.splice(idx, 1);
+                    saveData();
+                    renderAll();
+                });
+                aCell.appendChild(removeBtn);
+            });
+
+            container.appendChild(table);
         }
 
         function renderApproach() {
-            const fields = [
-                { key: 'aspect', label: 'Decision Area (e.g. Architecture, Integration, Performance)', type: 'text', placeholder: 'e.g. Database Strategy' },
-                { key: 'rationale', label: 'Reasoning & Trade-offs', type: 'textarea', rows: 3, fullWidth: true }
-            ];
-            renderSimpleList('approach-container', data.solutionApproach, fields, 'Decision', 'add-approach-btn');
+            const container = document.getElementById('approach-container');
+            container.innerHTML = '';
+
+            if (data.solutionApproach.length === 0) {
+                const p = document.createElement('p');
+                p.className = 'text-muted';
+                p.textContent = 'No approach decisions documented.';
+                container.appendChild(p);
+                return;
+            }
+
+            data.solutionApproach.forEach((item, idx) => {
+                const block = document.createElement('div');
+                block.style.marginBottom = '1.5rem';
+                block.style.paddingBottom = '1.5rem';
+                block.style.borderBottom = '1px solid #e2e8f0';
+
+                const header = document.createElement('div');
+                header.style.display = 'flex';
+                header.style.justifyContent = 'space-between';
+                header.style.alignItems = 'center';
+                header.style.marginBottom = '0.5rem';
+
+                const title = document.createElement('h4');
+                title.style.margin = '0';
+                title.style.fontSize = '1rem';
+                title.style.fontWeight = '600';
+                title.style.color = '#0f172a';
+                title.textContent = item.aspect || 'Untitled';
+                header.appendChild(title);
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'btn btn-danger btn-sm';
+                removeBtn.textContent = '✕ Remove';
+                removeBtn.addEventListener('click', () => {
+                    data.solutionApproach.splice(idx, 1);
+                    saveData();
+                    renderAll();
+                });
+                header.appendChild(removeBtn);
+                block.appendChild(header);
+
+                const rationale = document.createElement('p');
+                rationale.style.color = '#475569';
+                rationale.style.lineHeight = '1.6';
+                rationale.style.margin = '0.5rem 0 0 0';
+                rationale.style.whiteSpace = 'pre-wrap';
+                rationale.textContent = item.rationale || '';
+                block.appendChild(rationale);
+
+                container.appendChild(block);
+            });
         }
 
         function renderAcceptance() {
