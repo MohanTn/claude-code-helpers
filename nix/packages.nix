@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs, lib, ... }:
 
 {
   # lets GTK/Pango apps discover home.packages fonts, including
@@ -33,8 +33,9 @@
     # dev platforms
     dotnet-sdk_8
 
-    # GitHub
-    gh
+    # GitHub & GitLab
+    gh    # GitHub CLI
+    glab  # GitLab CLI
 
     # quality of life on any Linux box or fresh WSL image
     wl-clipboard # bridges tmux copy-mode selections to the system clipboard
@@ -43,10 +44,20 @@
     htop
     wget
     unzip
-    lazygit
     wslu # wslview and friends; harmless on plain Linux
 
-    # AI custom assisted packages
-    # pipeline-worker or pw, local-scribe (TODO: define these custom packages)
+    # Custom assisted packages installed via setup-packages.sh or optional-packages.nix
+    # pipeline-worker, local-scribe
   ];
+
+  # hunkdiff: interactive hunk-by-hunk diff review, used for code review
+  home.activation.installHunkdiff = lib.hm.dag.entryAfter [ "installPackages" ] ''
+    export PATH="${pkgs.nodejs_22}/bin:$PATH"
+    export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+
+    if ! command -v hunkdiff >/dev/null 2>&1; then
+      echo "Installing hunkdiff..."
+      $DRY_RUN_CMD npm install --global hunkdiff
+    fi
+  '';
 }
