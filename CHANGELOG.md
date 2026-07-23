@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 
+- Enhanced the feature-plan skill documentation and UI with emphasis on brevity, skimmability, and concrete analogies. Rewrote section descriptions to use relatable metaphors (renovation plan, contractor questions, floor plans, recipes, trip backups) making each section's purpose clearer to users.
 - README rewritten from technical file reference to step-by-step setup guide with troubleshooting and everyday workflows. nix/packages.nix adds glab and hunkdiff npm installation, removes lazygit, and clarifies custom package comments.
 - Added comprehensive test coverage for all three tool hooks (Claude, Copilot, Pi), fixed Docker deployment to include missing hook files and npm dependencies for the boilerplate generator, added flake.nix validation checks (docker-hook-parity, context-augment-tests, feature-plan-tests) to catch manifest divergence, and cleaned up git tracking of Python bytecode.
 - Added repo-map.sh to generate a single folder→file→symbol index for agent orientation, added pre-compact hook to preserve goal and edited files before compaction, removed redundant read-guard ledger system (injection is now advisory), improved AGENTS.md guidance on goals and narration, deleted unused arch and token-efficiency skills, and updated hooks infrastructure.

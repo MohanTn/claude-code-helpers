@@ -14,6 +14,12 @@ Turn the user's feature into a **code-level implementation plan**: you generate 
 - The export tags human changes `[HUMAN-EDITED]` / `[HUMAN-ADDED]`; tagged content is authoritative over your draft.
 - An `(UNRESOLVED …)` decision in the pasted plan is a blocker: ask the human to decide, do not implement past it.
 
+**Keep complexity low (skimmable plan):** the reader must get the full picture from the Feature Overview + File Manifest descriptions alone; everything below them is drill-down detail, not required reading.
+- `overview`, `architecture` — short and dense; a diagram beats paragraphs.
+- `files[].description` — one line. `pseudoCode` — signatures/stubs, ≤10 lines; never full bodies.
+- `solutionApproach` — max 3 aspects, ≤3 sentences of rationale each.
+- Prefer fewer, denser items per section; apply the skip rules aggressively rather than padding sections.
+
 ---
 
 ## Operating modes
@@ -95,4 +101,5 @@ Print to chat:
 - Every unresolved ambiguity is an `openQuestions` item with options and an empty `decision`.
 - `edgeCases` covers the scenarios typical for this feature type (auth: missing creds, bad creds, rate-limit).
 - No section repeats another: `logicSteps` adds nothing the manifest shows, `contracts` only changed public surface, `folderStructure` absent.
+- Skimmable: reading only the Feature Overview and `files[].description` lines gives a clear picture of what will be built and where; no `pseudoCode` exceeds ~10 lines.
 - Updating an existing plan? Same output filename, same `title`, merged — never a fresh file.
