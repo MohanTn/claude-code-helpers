@@ -225,7 +225,7 @@
                     <!-- PROBLEM: FEATURE OVERVIEW -->
                     <div class="section" id="overview-section">
                         <h2 class="section-head">📌 Feature Overview</h2>
-                        <p class="section-desc">The AI's own words: what was asked, what it understood, and how this fits the existing codebase — one free-form narrative, not a form.</p>
+                        <p class="section-desc">The AI's own words: what was asked, what it understood, and how this fits the existing codebase. Like the cover page of a renovation plan — one free-form narrative, not a form.</p>
                         <div class="section-body">
                             <div><label>Feature Title</label><input id="feature-title" placeholder="e.g. Add two-factor authentication" /></div>
                             <div class="mt-1"><label>Overview (the ask, what the AI understood, and the existing code it touches)</label><textarea id="feature-overview" rows="6" placeholder="e.g. You asked to 'add 2FA to login'. I read AuthService.php and the users table; I understand this as a TOTP second factor verified at login, with enrollment from the profile page. The login flow currently..."></textarea></div>
@@ -235,7 +235,7 @@
                     <!-- PROBLEM: OPEN QUESTIONS & DECISIONS -->
                     <div class="section" id="questions-section">
                         <h2 class="section-head">❓ Open Questions & Decisions</h2>
-                        <p class="section-desc">Ambiguities the AI could not resolve from the ask or the code. <strong>The human decides here.</strong> An empty Decision exports as UNRESOLVED and blocks implementation.</p>
+                        <p class="section-desc">Choices only you can make. Like a contractor asking "tile or wood?" before starting work. <strong>The human decides here.</strong> An empty Decision exports as UNRESOLVED and blocks implementation.</p>
                         <div class="section-body">
                             <div id="questions-container"></div>
                             <button id="add-question-btn" class="btn btn-outline btn-block mt-1">＋ Add open question</button>
@@ -245,7 +245,7 @@
                     <!-- SOLUTION: DESIGN PATTERN & ARCHITECTURE -->
                     <div class="section" id="architecture-section">
                         <h2 class="section-head">🧩 Design Pattern &amp; Architecture</h2>
-                        <p class="section-desc">The AI explains the pattern choices and draws the architecture in its own words — prose, ASCII diagrams, whatever communicates the design best. Edit freely to redirect it.</p>
+                        <p class="section-desc">The AI explains the pattern choices and draws the architecture in its own words — prose, ASCII diagrams, whatever communicates the design best. Like agreeing every room follows the same wiring standard. <strong>Edit freely to redirect it</strong> (e.g., switch from Repository to Service Layer).</p>
                         <div class="section-body">
                             <textarea id="feature-architecture" rows="12" placeholder="e.g. Layered flow, one new service:&#10;&#10;  LoginController ──▶ AuthService ──▶ TotpService  [NEW]&#10;                          │&#10;                          └──▶ UserRepository&#10;&#10;Why: TOTP logic is isolated in TotpService so AuthService stays..."></textarea>
                         </div>
@@ -254,7 +254,7 @@
                     <!-- SOLUTION: APPROACH & RATIONALE -->
                     <div class="section" id="approach-section">
                         <h2 class="section-head">💡 Solution Approach & Rationale</h2>
-                        <p class="section-desc">Explain the high-level design decisions, trade-offs, and rationale before diving into implementation. This section helps reviewers understand the "why" before the "what".</p>
+                        <p class="section-desc">Why this design was chosen. Like an architect explaining why the kitchen moves next to the dining room. The "why" before the "what".</p>
                         <div class="section-body">
                             <div id="approach-container"></div>
                             <button id="add-approach-btn" class="btn btn-outline btn-block mt-1">＋ Add design decision</button>
@@ -264,7 +264,7 @@
                     <!-- SOLUTION: RESULTING FOLDER STRUCTURE -->
                     <div class="section" id="folder-section">
                         <h2 class="section-head">🌳 Resulting Folder Structure</h2>
-                        <p class="section-desc">Tree of the affected directories after the change. Mark every touched file <strong>[CREATE]</strong>, <strong>[UPDATE]</strong>, or <strong>[DELETE]</strong>; must match the file manifest below.</p>
+                        <p class="section-desc">Where files end up after the change. Like a floor plan showing which shelves get new boxes. Every touched file is marked <strong>[CREATE]</strong>, <strong>[UPDATE]</strong>, or <strong>[DELETE]</strong>, matching the manifest below.</p>
                         <div class="section-body">
                             <textarea id="folder-structure" rows="8" placeholder="src/&#10;├── Auth/&#10;│   └── AuthService.php    [UPDATE]&#10;└── Security/&#10;    └── TotpService.php    [CREATE]"></textarea>
                         </div>
@@ -273,7 +273,7 @@
                     <!-- SOLUTION: FILE MANIFEST -->
                     <div class="section" id="files-section">
                         <h2 class="section-head">📂 File Change Manifest (In Order of Execution)</h2>
-                        <p class="section-desc">List every file that needs to be created, updated, or deleted. Order them by build sequence. Add pseudo-code for each.</p>
+                        <p class="section-desc">Every file to create, update, or delete, in build order. Like a recipe: prep the ingredients before cooking. Pseudo-code per file.</p>
                         <div class="section-body">
                             <div id="files-container"></div>
                             <button id="add-file-btn" class="btn btn-outline btn-block mt-1">＋ Add file to manifest</button>
@@ -283,7 +283,7 @@
                     <!-- SOLUTION: ACCEPTANCE CRITERIA & TEST CASES -->
                     <div class="section" id="acceptance-section">
                         <h2 class="section-head">✅ Acceptance Criteria &amp; Test Cases</h2>
-                        <p class="section-desc">Testable conditions that define "done", each paired with the test case that proves it.</p>
+                        <p class="section-desc">Testable conditions that define "done", each paired with the test case that proves it. Like the walkthrough checklist after a renovation: tap runs hot, door locks.</p>
                         <div class="section-body">
                             <div id="acceptance-container"></div>
                             <button id="add-acceptance-btn" class="btn btn-outline btn-block mt-1">＋ Add criterion + test</button>
@@ -293,7 +293,7 @@
                     <!-- SOLUTION: EDGE CASES -->
                     <div class="section" id="edges-section">
                         <h2 class="section-head">🚨 Edge Cases & Error Handling</h2>
-                        <p class="section-desc">What happens when things go wrong? Specify validation rules, exceptions, and fallbacks.</p>
+                        <p class="section-desc">What happens when things go wrong. Like a trip plan's "if the flight is delayed" backup. Validation rules, errors, and fallbacks.</p>
                         <div class="section-body">
                             <div id="edges-container"></div>
                             <button id="add-edge-btn" class="btn btn-outline btn-block mt-1">＋ Add edge case</button>
@@ -303,7 +303,7 @@
                     <!-- REFERENCE: CORE BUSINESS LOGIC -->
                     <div class="section" id="logic-section">
                         <h2 class="section-head">🧠 Core Business Logic (Detailed Pseudo-Code)</h2>
-                        <p class="section-desc">The main algorithm or orchestration of the feature. Write this in plain English + pseudo-code so an AI can translate it into actual code.</p>
+                        <p class="section-desc">The main flow in plain English + pseudo-code. Like driving directions: start, turn, arrive. Only what the file manifest doesn't already show.</p>
                         <div class="section-body">
                             <div id="logic-container"></div>
                             <button id="add-logic-btn" class="btn btn-outline btn-block mt-1">＋ Add logic step</button>
@@ -313,7 +313,7 @@
                     <!-- REFERENCE: API / FUNCTION CONTRACTS -->
                     <div class="section" id="contracts-section">
                         <h2 class="section-head">📡 Function / API Contracts</h2>
-                        <p class="section-desc">Inputs, outputs, signatures for the main entry points (Controllers, Event Handlers, CLI commands).</p>
+                        <p class="section-desc">What goes in and what comes out of each public entry point. Like a vending machine: coins and a button in, a drink out. Covers routes, handlers, CLI commands.</p>
                         <div class="section-body">
                             <div id="contracts-container"></div>
                             <button id="add-contract-btn" class="btn btn-outline btn-block mt-1">＋ Add contract</button>
